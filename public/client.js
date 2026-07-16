@@ -714,7 +714,7 @@ function onPhaseChange(phase) {
 function onNewRound() {
     me.position = null;
     el.overlay.classList.remove('show');
-    el.cashBtn.classList.remove('cancel-mode');
+    el.cashBtn.classList.remove('done', 'locked');
     el.cashBtn.disabled = false;
     el.timerPhase.textContent = 'Accepting Bets';
     el.timerPhase.classList.remove('live');
@@ -753,18 +753,23 @@ socket.on('round:end', d => {
 
     el.ovTitle.textContent = `Team ${d.winner} Wins`;
     el.ovTitle.className = d.winner;
-    el.ovSub.textContent = `Backers paid ${d.finalMult.toFixed(2)}x · Pools ${fmtC(d.red)} vs ${fmtC(d.blue)}`;
+    el.ovSub.textContent = `Final multiplier ${d.finalMult.toFixed(2)}x · Pools ${fmtC(d.red)} vs ${fmtC(d.blue)}`;
 
     const r = d.result || { kind: 'spectator' };
     let html = '';
     if (r.kind === 'won') {
-        const profit = r.amount - (r.stake || 0);
-        html = `Your team took the pool at ${r.mult.toFixed(2)}x<span class="win-amt">+${fmtC(r.amount)}</span>`;
-        html += `<div class="neutral">profit ${profit >= 0 ? '+' : ''}${fmtC(profit)} on a ${fmtC(r.stake || 0)} stake</div>`;
+        html = `You held to the end at ${r.mult.toFixed(2)}x<span class="win-amt">+${fmtC(r.amount)}</span>`;
         confettiBurst(); snd.win();
     } else if (r.kind === 'lost') {
-        html = `Your stake went to the winners<span class="lose-amt">−${fmtC(r.amount)}</span>`;
+        html = `Your position was liquidated<span class="lose-amt">−${fmtC(r.amount)}</span>`;
         snd.lose();
+    } else if (r.kind === 'banked') {
+        html = `Smart exit — you banked earlier at ${r.mult.toFixed(2)}x<span class="win-amt">+${fmtC(r.amount)}</span>`;
+        if (r.teamWon && r.wouldHave > r.amount) {
+            html += `<div class="neutral">Holding would have paid ${fmtC(r.wouldHave)}…</div>`;
+        } else if (!r.teamWon) {
+            html += `<div class="neutral">Perfect read — your team lost after you left. 🧠</div>`;
+        }
     } else {
         html = `<span class="neutral">You spectated this round. Jump in next time.</span>`;
     }
@@ -814,19 +819,32 @@ function renderTimer() {
 
 function myMult() {
     if (!me.position) return 0;
-    return me.position.team === 'red' ? ST.rMult : ST.bMult;  // pari-mutuel odds (edge baked in)
+    return me.position.team === 'red' ? ST.rMult : ST.bMult;
 }
+function netValue(stake, mult) { return stake * mult * (1 - CFGC.edge); }
 
 function renderPosition() {
     if (!me.position) return;
     const pos = me.position;
     const m = myMult();
-    const val = Math.round(pos.stake * m);   // what you'd win if your team takes the rope
+    const val = pos.out ? pos.banked : netValue(pos.stake, m);
     const profit = val - pos.stake;
     el.posStake.textContent = fmtC(pos.stake);
-    el.posValue.textContent = fmtC(val) + ` @ ${m.toFixed(2)}x`;
+    el.posValue.textContent = fmtC(val) + (pos.out ? ' (banked)' : '');
     el.posProfit.textContent = (profit >= 0 ? '+' : '') + fmtC(profit);
     el.posProfit.className = profit >= 0 ? 'up' : 'down';
+
+    if (!pos.out && ST.phase === 'live') {
+        if (m > 0) {
+            el.cashBtn.classList.remove('locked');
+            el.cashBtn.disabled = false;
+            el.cashVal.textContent = fmtC(netValue(pos.stake, m));
+        } else {
+            el.cashBtn.classList.add('locked');
+            el.cashBtn.disabled = true;
+            el.cashVal.textContent = '0.00x — boost to fight back!';
+        }
+    }
 }
 
 function renderActions() {
@@ -838,18 +856,23 @@ function renderActions() {
     el.joinRed.style.display = betting && !joined ? 'flex' : 'none';
     el.joinBlue.style.display = betting && !joined ? 'flex' : 'none';
     el.posCard.style.display = joined ? 'flex' : 'none';
-    el.boostBtn.style.display = live && joined ? 'flex' : 'none';
-    // the old cash-out button is repurposed as a betting-window "cancel bet"
-    el.cashBtn.style.display = betting && joined ? 'flex' : 'none';
+    el.boostBtn.style.display = live && joined && !me.position.out ? 'flex' : 'none';
+    el.cashBtn.style.display = live && joined ? 'flex' : 'none';
     el.spectate.style.display = live && !joined ? 'flex' : 'none';
 
     if (joined) {
         el.posTeam.textContent = me.position.team.toUpperCase();
         el.posTeam.className = 'team-tag ' + me.position.team;
         el.boostLabel.textContent = `stake more on ${me.position.team.toUpperCase()}`;
-        el.cashBtn.classList.add('cancel-mode');
-        el.cashBtn.firstChild.textContent = 'Cancel Bet ';
-        el.cashVal.textContent = `refund ${fmtC(me.position.stake)}`;
+    }
+    if (joined && me.position.out) {
+        el.cashBtn.classList.add('done');
+        el.cashBtn.disabled = true;
+        el.cashBtn.firstChild.textContent = 'Cashed Out ';
+        el.cashVal.textContent = `banked ${fmtC(me.position.banked)} @ ${me.position.outMult.toFixed(2)}x`;
+    } else {
+        el.cashBtn.classList.remove('done');
+        el.cashBtn.firstChild.textContent = 'Cash Out ';
     }
 }
 
@@ -1003,15 +1026,13 @@ function injectBoost() {
     });
 }
 
-function triggerCancel() {
-    socket.emit('cancel', {}, res => {
+function triggerCashout() {
+    socket.emit('cashout', {}, res => {
         if (res.error) { toast(res.error); return; }
         me.balance = res.balance;
-        me.position = res.position;   // null after a cancel
-        el.cashBtn.classList.remove('cancel-mode');
-        renderBalance(); renderActions();
+        me.position = res.position;
+        renderBalance(); renderActions(); renderPosition();
         snd.cashout();
-        addChat('system', 'System', '↩ Bet cancelled — coins refunded.');
     });
 }
 

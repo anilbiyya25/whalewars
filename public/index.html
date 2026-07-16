@@ -126,7 +126,7 @@
                     <button class="chip-btn" onclick="mulBet(0.5)">½</button>
                     <button class="chip-btn" onclick="mulBet(2)">2×</button>
                 </div>
-                <div class="edge-note" id="edge-note">Pari-mutuel pool · winners split the pot · 🪙5,000+ triggers Whale Alert</div>
+                <div class="edge-note" id="edge-note">House edge applied on payouts · 🪙5,000+ triggers Whale Alert</div>
             </div>
 
             <div class="action-block">
@@ -139,16 +139,16 @@
 
                 <div class="position-card" id="position-card">
                     <div class="pc-head">Your Position <span class="team-tag" id="pos-team">RED</span></div>
-                    <div class="pc-row"><span>Your stake</span><strong id="pos-stake">🪙0</strong></div>
-                    <div class="pc-row"><span>Payout if you win</span><strong id="pos-value">🪙0</strong></div>
-                    <div class="pc-row"><span>Profit if you win</span><strong id="pos-profit">🪙0</strong></div>
+                    <div class="pc-row"><span>Total stake</span><strong id="pos-stake">$0</strong></div>
+                    <div class="pc-row"><span>Live value</span><strong id="pos-value">$0.00</strong></div>
+                    <div class="pc-row"><span>P/L</span><strong id="pos-profit">$0.00</strong></div>
                 </div>
 
                 <button class="btn-boost" id="boost-btn" onclick="injectBoost()">
                     🚀 Boost <span id="boost-label">stake more mid-battle</span>
                 </button>
-                <button class="btn-cashout" id="cashout-btn" onclick="triggerCancel()">
-                    Cancel Bet <small id="cashout-val">refund 🪙0</small>
+                <button class="btn-cashout" id="cashout-btn" onclick="triggerCashout()">
+                    Cash Out <small id="cashout-val">$0.00</small>
                 </button>
 
                 <div class="spectate-note" id="spectate-note">

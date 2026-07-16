@@ -25,23 +25,15 @@ LAN) to see real multiplayer: both clients fight over the same rope in the same 
 
 | Phase | Duration | What happens |
 |---|---|---|
-| Betting | 10s | Players stake coins and lock a team. Live pari-mutuel odds shown. You may **cancel** your bet (full refund) during this window only. |
-| Live Battle | 35s | Rope physics run off the live pool ratio. Boosts and whale bets (🪙5,000+) apply kinetic impulses. Odds update as money flows: the team with **less** money pays **more**. |
-| Settlement | 6s | Whichever side the rope is on wins. The whole net pool (total − 4% house edge) is split among the winning team's backers **pro-rata by stake**. Losing team's stakes fund the prizes. |
+| Betting | 10s | Players stake coins and lock a team. Rope shows a small preview lean toward the heavier pool. |
+| Live Battle | 35s | Rope physics run off the live pool ratio. Boosts and whale bets (🪙5,000+) apply kinetic impulses. Winning side multiplier compounds with dominance (capped at 10x); losing side decays to 0x. Cash out any time your multiplier > 0 to lock it in. |
+| Settlement | 6s | Rope side decides winner. Uncashed winners get final multiplier × stake, minus 4% house edge. Uncashed losers are liquidated. |
 
-## Economy — pari-mutuel pool, 100% virtual coins (🪙)
+## Economy — 100% virtual coins (🪙)
 
 No real money anywhere. New players get **🪙10,000 free**; bets are whole coins
 (min 🪙10, max 🪙100,000); a free-coin refill unlocks when your balance drops
-under 🪙500.
-
-**Pari-mutuel math** (see [`server/engine.js`](server/engine.js)): a team's multiplier
-is `net pool ÷ that team's pool`, where the net pool is the total minus a **4% house
-edge**. Winners split exactly the net pool in proportion to their stake, so the house
-keeps precisely 4% every round and **payout liability is always bounded by the pool** —
-no runaway exposure. There is intentionally **no mid-round cashout**: under pool odds it
-would let an underdog bettor drain the pot. (If you want an Aviator-style cashout back,
-that requires a capped-multiplier model instead of a pool.)
+under 🪙500. All amounts and payouts are integers.
 
 ## Architecture
 
@@ -59,7 +51,7 @@ public/
 **Protocol** (Socket.IO):
 
 - Client → server: `auth {token?, name}`, `bet {team, amount}`, `boost {amount}`,
-  `cancel`, `refill`, `chat {text}` — all money intents answered with acks
+  `cashout`, `refill`, `chat {text}` — all money intents answered with acks
   (`{ok, balance, position}` or `{error}`).
 - Server → clients: `state` (10Hz snapshot), `phase`, `feed:bet`, `whale`, `chat`,
   `round:new`, `round:end` (personalized settlement per socket), `online`, `hello` (config).
@@ -75,9 +67,9 @@ This runs on **virtual coins**. If it ever moves to real money, you need — in 
    in Postgres, and a ledger table (every debit/credit as an immutable row).
 2. **Provable fairness** — the rope noise uses `Math.random()`. Real-money games like this use a
    committed server seed + client seeds (hash published before the round).
-3. **Liability management** — ✅ already handled: the pari-mutuel model bounds house
-   exposure to the pool and locks in a 4% margin every round (winners can only split
-   what losers put in). Nothing to change here for the money model itself.
+3. **Liability management** — payouts are multiplier-based; exposure is bounded by the
+   `MAX_MULT` cap (payout ≤ 10× stake). For real money you'd still size a per-round
+   bankroll reserve, or move to a parimutuel pool where winners only split what losers put in.
 4. **Licensing / KYC / AML / payments** — jurisdiction licensing, then a PSP or crypto
    custody integration. This is the long pole for any B2B iGaming deployment.
 5. **Scale-out** — single-process room today. Multi-node needs the Socket.IO Redis
@@ -86,7 +78,7 @@ This runs on **virtual coins**. If it ever moves to real money, you need — in 
 
 ## Tuning knobs (server/config.js)
 
-- `HOUSE_EDGE` — 0.035 (3.5% skim on every payout)
+- `HOUSE_EDGE` — 0.04 (4% skim on every payout) · `MAX_MULT` — 10 (multiplier cap)
 - `WHALE_MIN` — $500 alert threshold
 - Multiplier curve — `_stepMults()` in engine.js (`dom * 0.0095` growth per 100ms tick;
   raise/lower to change how fast dominance pays)

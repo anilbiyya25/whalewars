@@ -25,7 +25,7 @@ class Engine extends EventEmitter {
         super();
         this.players = players;
         this.roundId = 1;
-        this.positions = new Map(); // token -> { team, stake }
+        this.positions = new Map(); // token -> { team, stake, out, outMult, banked }
         this.round = this._freshRound();
         this.timer = null;
     }
@@ -76,12 +76,12 @@ class Engine extends EventEmitter {
             }
         } else if (r.phase === 'live') {
             this._stepRope();
+            this._stepMults();
             if (r.tLeft <= 0) return this._settle();
         } else if (r.phase === 'settled') {
             if (r.tLeft <= 0) return this._newRound();
         }
 
-        this._updateOdds();   // live pari-mutuel odds from the current pools
         this.emit('state', this.snapshot());
     }
 
@@ -107,15 +107,19 @@ class Engine extends EventEmitter {
         if (r.pos > CFG.ROPE_MAX) { r.pos = CFG.ROPE_MAX; r.vel *= -0.3; }
     }
 
-    // Pari-mutuel odds: if a team wins, its backers split the whole net pool.
-    // multiplier = (net pool) / (that team's pool)  →  underdog pays more.
-    _updateOdds() {
+    // Winning side compounds with dominance (capped at MAX_MULT so house
+    // liability stays bounded); losing side collapses toward 0.
+    _stepMults() {
         const r = this.round;
-        const total = r.red + r.blue;
-        if (total <= 0) { r.rMult = 1.00; r.bMult = 1.00; return; }
-        const net = total * (1 - CFG.HOUSE_EDGE);   // house edge skimmed off the top
-        r.rMult = r.red > 0 ? +(net / r.red).toFixed(2) : 0;
-        r.bMult = r.blue > 0 ? +(net / r.blue).toFixed(2) : 0;
+        const dom = Math.abs(r.pos - 50) / 46;
+        const grow = 1 + dom * 0.0095;
+        if (r.pos < 50) {
+            r.rMult = Math.min(CFG.MAX_MULT, Math.max(r.rMult, 1.0) * grow);
+            r.bMult = r.bMult > 0.05 ? r.bMult * 0.88 : 0;
+        } else if (r.pos > 50) {
+            r.bMult = Math.min(CFG.MAX_MULT, Math.max(r.bMult, 1.0) * grow);
+            r.rMult = r.rMult > 0.05 ? r.rMult * 0.88 : 0;
+        }
     }
 
     _impulse(team, amount) {
@@ -124,6 +128,8 @@ class Engine extends EventEmitter {
     }
 
     /* ---------------- money (virtual coins, integers) ---------------- */
+
+    net(stake, mult) { return Math.round(stake * mult * (1 - CFG.HOUSE_EDGE)); }
 
     _validAmount(amount) {
         const a = Math.floor(Number(amount));
@@ -153,12 +159,11 @@ class Engine extends EventEmitter {
         if (amt > p.balance) return { error: 'Not enough coins' };
 
         p.balance = Math.round(p.balance - amt);
-        const position = { team, stake: amt };
+        const position = { team, stake: amt, out: false, outMult: 0, banked: 0 };
         this.positions.set(token, position);
         r[team] += amt;
         if (team === 'red') r.redBettors++; else r.blueBettors++;
         this._announceMoney(p.name, team, amt, false);
-        this._updateOdds();
         this.players.save();
         return { ok: true, balance: p.balance, position };
     }
@@ -170,6 +175,7 @@ class Engine extends EventEmitter {
         if (!p) return { error: 'Not authenticated' };
         if (r.phase !== 'live') return { error: 'Boosts only work during the live battle' };
         if (!pos) return { error: 'You have no position this round' };
+        if (pos.out) return { error: 'You already cashed out' };
         const amt = this._validAmount(amount);
         if (amt === null) return { error: `Boost must be 🪙${CFG.MIN_BET}–🪙${CFG.MAX_BET.toLocaleString()}` };
         if (amt > p.balance) return { error: 'Not enough coins' };
@@ -180,28 +186,28 @@ class Engine extends EventEmitter {
         // boosts always kick the rope; whales kick harder via _announceMoney
         if (amt < CFG.WHALE_MIN) this._impulse(pos.team, Math.max(amt, 1200));
         this._announceMoney(p.name, pos.team, amt, true);
-        this._updateOdds();
         this.players.save();
         return { ok: true, balance: p.balance, position: pos };
     }
 
-    // Pari-mutuel has no mid-round cashout (it would let underdogs drain the pool).
-    // A player may only cancel their bet during the betting window — full refund.
-    cancelBet(token) {
+    cashout(token) {
         const r = this.round;
         const p = this.players.get(token);
         const pos = this.positions.get(token);
         if (!p) return { error: 'Not authenticated' };
-        if (r.phase !== 'betting') return { error: 'You can only cancel during the betting window' };
-        if (!pos) return { error: 'You have no bet to cancel' };
+        if (r.phase !== 'live') return { error: 'Cashout only works during the live battle' };
+        if (!pos) return { error: 'You have no position this round' };
+        if (pos.out) return { error: 'Already cashed out' };
+        const mult = pos.team === 'red' ? r.rMult : r.bMult;
+        if (mult <= 0) return { error: 'Your multiplier is 0x — boost to fight back' };
 
-        p.balance = Math.round(p.balance + pos.stake);
-        r[pos.team] -= pos.stake;
-        if (pos.team === 'red') r.redBettors--; else r.blueBettors--;
-        this.positions.delete(token);
-        this._updateOdds();
+        pos.out = true;
+        pos.outMult = +mult.toFixed(2);
+        pos.banked = this.net(pos.stake, mult);
+        p.balance = Math.round(p.balance + pos.banked);
         this.players.save();
-        return { ok: true, balance: p.balance, position: null };
+        this.systemChat(`${p.name} cashed out at ${pos.outMult.toFixed(2)}x (+🪙${pos.banked.toLocaleString()})`);
+        return { ok: true, balance: p.balance, position: pos };
     }
 
     // Simulated liquidity (bots) — money enters pools but no player is paid.
@@ -219,35 +225,34 @@ class Engine extends EventEmitter {
 
     /* ---------------- settlement ---------------- */
 
-    // Pari-mutuel settlement: the whole net pool (total minus the house edge) is
-    // split among the winning team's backers, in proportion to how much each staked.
     _settle() {
         const r = this.round;
         r.phase = 'settled';
         r.tLeft = CFG.SETTLE_SECS;
         r.winner = r.pos < 50 ? 'red' : 'blue';
-
-        const total = r.red + r.blue;
-        const net = Math.round(total * (1 - CFG.HOUSE_EDGE));   // winners share this
-        const winningPool = r.winner === 'red' ? r.red : r.blue;
-        r.finalMult = winningPool > 0 ? +(net / winningPool).toFixed(2) : 0;
+        r.finalMult = +(r.winner === 'red' ? r.rMult : r.bMult).toFixed(2);
 
         const results = new Map();
-        let paidOut = 0;
         for (const [token, pos] of this.positions) {
             const p = this.players.get(token);
-            if (pos.team === r.winner && winningPool > 0) {
-                const payout = Math.round(net * (pos.stake / winningPool));   // pro-rata by stake
+            let res;
+            if (pos.out) {
+                res = {
+                    kind: 'banked', amount: pos.banked, mult: pos.outMult,
+                    teamWon: pos.team === r.winner,
+                    wouldHave: pos.team === r.winner ? this.net(pos.stake, r.finalMult) : 0,
+                };
+            } else if (pos.team === r.winner) {
+                const payout = this.net(pos.stake, r.finalMult);
                 p.balance = Math.round(p.balance + payout);
-                paidOut += payout;
-                results.set(token, { kind: 'won', amount: payout, stake: pos.stake, mult: +(payout / pos.stake).toFixed(2) });
+                res = { kind: 'won', amount: payout, mult: r.finalMult };
             } else {
-                results.set(token, { kind: 'lost', amount: pos.stake });
+                res = { kind: 'lost', amount: pos.stake };
             }
+            results.set(token, res);
         }
         this.players.save();
-        console.log(`[SETTLE] round ${r.id} ${r.winner} | pool ${total} | net ${net} | paid ${paidOut} | house ~${total - paidOut}`);
-        this.systemChat(`Team ${r.winner.toUpperCase()} wins round ${r.id} — backers split the pool at ${r.finalMult.toFixed(2)}x!`);
+        this.systemChat(`Team ${r.winner.toUpperCase()} takes round ${r.id} at ${r.finalMult.toFixed(2)}x!`);
         this.emit('settled', {
             winner: r.winner, finalMult: r.finalMult,
             red: Math.round(r.red), blue: Math.round(r.blue),
