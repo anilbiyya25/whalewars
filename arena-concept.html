@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whale Wars — Arena Concept Demo</title>
+<style>
+:root {
+    --red: #ff2a5f; --blue: #2a86ff; --gold: #ffb800; --green: #00c853;
+    --bg: #060a14; --panel: rgba(10,14,26,0.85); --line: rgba(255,255,255,0.08);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, "Segoe UI", Roboto, sans-serif; user-select: none; }
+body { background: var(--bg); color: #fff; height: 100vh; overflow: hidden; }
+#cv { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; }
+
+/* top HUD */
+.hud-top {
+    position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 10;
+    pointer-events: none;
+}
+#timer-pill {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 30px;
+    padding: 7px 26px; font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums;
+    backdrop-filter: blur(8px); box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+}
+#phase-pill {
+    font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--gold); background: rgba(0,0,0,0.5); padding: 3px 14px; border-radius: 20px;
+}
+#phase-pill.live { color: var(--red); animation: blink 1s infinite; }
+@keyframes blink { 50% { opacity: 0.5; } }
+
+/* concept label */
+.concept-tag {
+    position: fixed; top: 14px; left: 14px; z-index: 10;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 14px; font-size: 11px; color: #8189a0; line-height: 1.5;
+}
+.concept-tag b { color: var(--gold); display: block; font-size: 13px; }
+
+/* control bar */
+.controls {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 10;
+    display: flex; gap: 10px; justify-content: center; align-items: center;
+    padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(4,6,12,0.95), transparent);
+}
+.controls button {
+    border: none; border-radius: 12px; padding: 13px 18px;
+    font-size: 13px; font-weight: 900; color: #fff; cursor: pointer;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    transition: transform 0.12s, filter 0.12s;
+    text-transform: uppercase; letter-spacing: 0.5px;
+}
+.controls button:hover { transform: translateY(-3px); filter: brightness(1.15); }
+.controls button:active { transform: translateY(0) scale(0.96); }
+.b-red { background: linear-gradient(160deg, #ff4775, #c81848); }
+.b-blue { background: linear-gradient(160deg, #4797ff, #1a5fd0); }
+.b-whale-red { background: linear-gradient(160deg, #ff4775, #7a0c2e); border: 2px solid var(--gold) !important; color: var(--gold) !important; }
+.b-whale-blue { background: linear-gradient(160deg, #4797ff, #0c2e7a); border: 2px solid var(--gold) !important; color: var(--gold) !important; }
+.b-neutral { background: #1e2436; border: 1px solid var(--line) !important; color: #aab2c8 !important; }
+.b-neutral.on { color: var(--green) !important; border-color: var(--green) !important; }
+</style>
+</head>
+<body>
+
+<canvas id="cv"></canvas>
+
+<div class="concept-tag"><b>🐋 ARENA CONCEPT v2</b>Click the buttons — feel the fight.<br><b style="display:inline;color:#ffb800">Click a whale to poke it!</b> They roar back.</div>
+
+<div class="hud-top">
+    <div id="timer-pill">10</div>
+    <div id="phase-pill">Accepting Bets</div>
+</div>
+
+<div class="controls">
+    <button class="b-red" onclick="userBet('red', 1000)">+ 🪙1,000 Red</button>
+    <button class="b-whale-red" onclick="userBet('red', 25000)">🐋 🪙25,000 Red</button>
+    <button class="b-neutral" id="auto-btn" onclick="toggleAuto()">Auto-Battle: ON</button>
+    <button class="b-whale-blue" onclick="userBet('blue', 25000)">🐋 🪙25,000 Blue</button>
+    <button class="b-blue" onclick="userBet('blue', 1000)">+ 🪙1,000 Blue</button>
+</div>
+
+<script>
+'use strict';
+
+/* ============================================================
+   WHALE WARS — canvas arena concept
+   Two whales tug a golden treasure chest across a stormy sea.
+   Pool ratio drives the rope; whale bets breach + lightning.
+   ============================================================ */
+
+const cv = document.getElementById('cv');
+const cx = cv.getContext('2d');
+let W = 0, H = 0, DPR = 1;
+
+function resize() {
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    W = window.innerWidth; H = window.innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    cx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+resize();
+
+/* ---------------- utils ---------------- */
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const TAU = Math.PI * 2;
+
+/* ---------------- audio ---------------- */
+let AC = null;
+const audio = () => AC || (AC = new (window.AudioContext || window.webkitAudioContext)());
+document.addEventListener('pointerdown', () => { const a = audio(); if (a.state === 'suspended') a.resume(); }, { once: true });
+function blip(f, d, type = 'sine', g = 0.07, when = 0) {
+    try {
+        const a = audio(), t = a.currentTime + when;
+        const o = a.createOscillator(), gn = a.createGain();
+        o.type = type; o.frequency.setValueAtTime(f, t);
+        gn.gain.setValueAtTime(g, t); gn.gain.exponentialRampToValueAtTime(0.0001, t + d);
+        o.connect(gn); gn.connect(a.destination); o.start(t); o.stop(t + d);
+    } catch (e) {}
+}
+const sndSplash = () => { blip(500, 0.08, 'sine', 0.05); blip(340, 0.12, 'sine', 0.04, 0.03); };
+const sndHorn = () => { blip(98, 0.7, 'sawtooth', 0.12); blip(147, 0.55, 'sawtooth', 0.08, 0.08); blip(196, 0.4, 'sine', 0.06, 0.16); };
+const sndWin = () => [523, 659, 784, 1047].forEach((f, i) => blip(f, 0.3, 'sine', 0.09, i * 0.13));
+
+/* ---------------- game sim (same math as the MVP engine) ---------------- */
+const SIM = {
+    BET_SECS: 10, LIVE_SECS: 35, SETTLE_SECS: 5,
+    phase: 'betting', tLeft: 10,
+    red: 0, blue: 0, redN: 0, blueN: 0,
+    pos: 50, vel: 0, rMult: 1, bMult: 1,
+    winner: null, auto: true, round: 1,
+};
+
+function ropeTarget() {
+    const total = SIM.red + SIM.blue;
+    if (total <= 0) return 50;
+    const range = SIM.phase === 'live' ? 42 : 10;
+    return 50 + clamp(((SIM.blue - SIM.red) / total) * range * 1.4, -range, range);
+}
+
+function impulse(team, amt) {
+    SIM.vel += (team === 'red' ? -1 : 1) * clamp(1.2 + amt / 8000, 0, 6.5);
+}
+
+function addMoney(team, amt, isUser) {
+    if (SIM.phase === 'settled') return;
+    SIM[team] += amt;
+    SIM[team === 'red' ? 'redN' : 'blueN']++;
+    const isWhale = amt >= 5000;
+    coinSplash(team, amt, isWhale);
+    if (isWhale && SIM.phase === 'live') impulse(team, amt);
+    if (isWhale) whaleEvent(team, amt, isUser);
+    else sndSplash();
+}
+function userBet(team, amt) { addMoney(team, amt, true); }
+
+/* per-frame sim step; constants tuned per 100ms so scale by f = dt/0.1 */
+function simStep(dt) {
+    const f = dt / 0.1;
+    SIM.tLeft -= dt;
+
+    if (SIM.phase === 'betting') {
+        if (SIM.auto && Math.random() < 0.25 * f) addMoney(pick(['red', 'blue']), botAmt(), false);
+        SIM.pos += (ropeTarget() - SIM.pos) * 0.06 * f;
+        if (SIM.tLeft <= 0) {
+            SIM.phase = 'live'; SIM.tLeft = SIM.LIVE_SECS; SIM.vel = 0;
+            phasePill.textContent = '⚔️ Live Battle'; phasePill.classList.add('live');
+        }
+    } else if (SIM.phase === 'live') {
+        if (SIM.auto) {
+            if (Math.random() < 0.09 * f) {
+                const losing = SIM.pos < 50 ? 'blue' : 'red';
+                addMoney(Math.random() < 0.58 ? losing : pick(['red', 'blue']), botAmt(), false);
+            }
+        }
+        SIM.vel += (ropeTarget() - SIM.pos) * 0.045 * f;
+        SIM.vel += (Math.random() - 0.5) * 0.35 * f;
+        SIM.vel *= Math.pow(0.88, f);
+        SIM.pos += SIM.vel * f;
+        if (SIM.pos < 4) { SIM.pos = 4; SIM.vel *= -0.3; }
+        if (SIM.pos > 96) { SIM.pos = 96; SIM.vel *= -0.3; }
+
+        const dom = Math.abs(SIM.pos - 50) / 46;
+        const grow = Math.pow(1 + dom * 0.0095, f);
+        if (SIM.pos < 50) { SIM.rMult = Math.max(SIM.rMult, 1) * grow; SIM.bMult = SIM.bMult > 0.05 ? SIM.bMult * Math.pow(0.88, f) : 0; }
+        else if (SIM.pos > 50) { SIM.bMult = Math.max(SIM.bMult, 1) * grow; SIM.rMult = SIM.rMult > 0.05 ? SIM.rMult * Math.pow(0.88, f) : 0; }
+
+        if (SIM.tLeft <= 0) {
+            SIM.phase = 'settled'; SIM.tLeft = SIM.SETTLE_SECS;
+            SIM.winner = SIM.pos < 50 ? 'red' : 'blue';
+            phasePill.textContent = 'Round Over'; phasePill.classList.remove('live');
+            sndWin(); confetti(); shake = 10;
+        }
+    } else if (SIM.phase === 'settled') {
+        if (SIM.tLeft <= 0) resetRound();
+    }
+
+    timerPill.textContent = Math.max(0, Math.ceil(SIM.tLeft));
+}
+
+function botAmt() {
+    const r = Math.random();
+    if (r < 0.6) return Math.floor(rand(100, 1200));
+    if (r < 0.92) return Math.floor(rand(1200, 4900));
+    return Math.floor(rand(5000, 40000));
+}
+
+function resetRound() {
+    SIM.phase = 'betting'; SIM.tLeft = SIM.BET_SECS;
+    SIM.red = 0; SIM.blue = 0; SIM.redN = 0; SIM.blueN = 0;
+    SIM.pos = 50; SIM.vel = 0; SIM.rMult = 1; SIM.bMult = 1;
+    SIM.winner = null; SIM.round++;
+    phasePill.textContent = 'Accepting Bets'; phasePill.classList.remove('live');
+    whaleR.sink = 0; whaleB.sink = 0;
+}
+
+function toggleAuto() {
+    SIM.auto = !SIM.auto;
+    const b = document.getElementById('auto-btn');
+    b.textContent = 'Auto-Battle: ' + (SIM.auto ? 'ON' : 'OFF');
+    b.classList.toggle('on', SIM.auto);
+}
+
+const timerPill = document.getElementById('timer-pill');
+const phasePill = document.getElementById('phase-pill');
+document.getElementById('auto-btn').classList.add('on');
+
+/* ---------------- scene state ---------------- */
+let T = 0;                 // global time
+let shake = 0;             // screen shake magnitude
+let lightning = 0;         // sky flash 0..1
+function newWhaleState(ph) {
+    return {
+        lean: 0, recoil: 0, sink: 0, pulse: 0,
+        blink: 0, nextBlink: rand(1.5, 4), roar: 0,
+        heavePh: ph, airborne: false,
+        sx: -9999, sy: -9999, srad: 95,        // screen pos for mouse hit-testing
+    };
+}
+const whaleR = newWhaleState(0);
+const whaleB = newWhaleState(2.2);
+let prevRM = 1, prevBM = 1;
+
+/* ---- mouse interaction: whales react to being poked ---- */
+const MOUSE = { x: -9999, y: -9999 };
+function hitWhale(x, y) {
+    if (Math.hypot(x - whaleR.sx, y - whaleR.sy) < whaleR.srad) return 'red';
+    if (Math.hypot(x - whaleB.sx, y - whaleB.sy) < whaleB.srad) return 'blue';
+    return null;
+}
+function pokeWhale(team) {
+    const st = team === 'red' ? whaleR : whaleB;
+    st.roar = 1; st.recoil = 1;
+    shake = Math.max(shake, 5);
+    blip(90 + rand(0, 40), 0.5, 'sawtooth', 0.1);
+    blip(140, 0.35, 'sawtooth', 0.06, 0.06);
+    particles.push({
+        kind: 'text', x: st.sx, y: st.sy - 140, vx: 0, vy: -30, life: 0, maxLife: 1.3,
+        size: 22, team, text: pick(['ROAAAR!', 'GRRRR!', '💢', 'WHO DARES?!', 'MY ROPE!']),
+    });
+    for (let i = 0; i < 12; i++) {
+        particles.push({ kind: 'spray', x: st.sx + rand(-90, 90), y: waterY(st.sx), vx: rand(-90, 90), vy: rand(-220, -60), life: 0, maxLife: 0.7, size: rand(2, 4.5) });
+    }
+}
+cv.addEventListener('pointermove', e => {
+    MOUSE.x = e.clientX; MOUSE.y = e.clientY;
+    cv.style.cursor = hitWhale(e.clientX, e.clientY) ? 'pointer' : 'default';
+});
+cv.addEventListener('pointerdown', e => {
+    const t = hitWhale(e.clientX, e.clientY);
+    if (t) pokeWhale(t);
+});
+
+const particles = [];      // {kind, x, y, vx, vy, life, maxLife, size, color, team}
+const bubbles = [];
+for (let i = 0; i < 40; i++) bubbles.push({ x: Math.random(), y: Math.random(), r: rand(1, 3.5), s: rand(6, 20) });
+
+const stars = [];
+for (let i = 0; i < 90; i++) stars.push({ x: Math.random(), y: Math.random() * 0.32, r: rand(0.4, 1.4), tw: rand(0, TAU) });
+
+/* fish armies — one entry per fighter, capped */
+const fishR = [], fishB = [];
+function syncFish() {
+    while (fishR.length < Math.min(SIM.redN, 34)) fishR.push(newFish());
+    while (fishB.length < Math.min(SIM.blueN, 34)) fishB.push(newFish());
+    if (SIM.redN === 0) fishR.length = 0;
+    if (SIM.blueN === 0) fishB.length = 0;
+}
+function newFish() {
+    return { ox: rand(30, 200), oy: rand(-40, 80), ph: rand(0, TAU), sp: rand(0.8, 1.6), s: rand(5, 11) };
+}
+
+/* ---------------- events / effects ---------------- */
+function coinSplash(team, amt, whale) {
+    const x = teamWaterX(team);
+    const n = whale ? 26 : clamp(Math.round(amt / 150), 4, 14);
+    for (let i = 0; i < n; i++) {
+        particles.push({
+            kind: 'coin', x: x + rand(-40, 40), y: waterY(x) - rand(120, 260),
+            vx: rand(-30, 30), vy: rand(40, 130), life: 0, maxLife: rand(0.9, 1.5),
+            size: whale ? rand(4, 7) : rand(2.5, 5), team,
+        });
+    }
+    // announce text
+    particles.push({
+        kind: 'text', x, y: waterY(x) - 150, vx: 0, vy: -34, life: 0, maxLife: 1.6,
+        size: whale ? 26 : 15, team, text: (whale ? '🐋 +🪙' : '+🪙') + amt.toLocaleString(),
+    });
+}
+
+function whaleEvent(team, amt, isUser) {
+    sndHorn();
+    shake = Math.min(16, 7 + amt / 400);
+    lightning = 1;
+    const w = team === 'red' ? whaleR : whaleB;
+    w.recoil = 1; w.roar = 1;
+    // shockwave ring at that whale
+    particles.push({ kind: 'ring', x: teamWaterX(team), y: waterY(teamWaterX(team)), life: 0, maxLife: 0.9, size: 10, team });
+    particles.push({ kind: 'ring', x: teamWaterX(team), y: waterY(teamWaterX(team)), life: -0.15, maxLife: 0.9, size: 10, team });
+    // banner text
+    particles.push({
+        kind: 'banner', x: W / 2, y: H * 0.16, vx: 0, vy: 0, life: 0, maxLife: 2.4, size: 22, team,
+        text: `🐋 WHALE ALERT — 🪙${amt.toLocaleString()} ON ${team.toUpperCase()}!`,
+    });
+}
+
+function confetti() {
+    for (let i = 0; i < 90; i++) {
+        particles.push({
+            kind: 'conf', x: rand(0, W), y: rand(-60, -10), vx: rand(-20, 20), vy: rand(60, 160),
+            life: 0, maxLife: rand(2, 3.6), size: rand(4, 8),
+            color: pick(['#ffb800', '#00c853', '#ff2a5f', '#2a86ff', '#ffffff']),
+        });
+    }
+}
+
+/* ---------------- geometry helpers ---------------- */
+const seaLevel = () => H * 0.46;
+function waterY(x) {
+    return seaLevel()
+        + Math.sin(x * 0.008 + T * 1.4) * 9
+        + Math.sin(x * 0.017 - T * 0.9) * 5;
+}
+/* rope endpoints track across usable width */
+const trackL = () => W * 0.10, trackR = () => W * 0.90;
+const posToX = p => lerp(trackL(), trackR(), p / 100);
+function teamWaterX(team) {
+    const mx = posToX(SIM.pos);
+    return team === 'red' ? clamp(mx - W * 0.22, W * 0.06, W * 0.8) : clamp(mx + W * 0.22, W * 0.2, W * 0.94);
+}
+
+/* ============================================================
+   RENDER
+   ============================================================ */
+function render(dt) {
+    // decay effects
+    shake = Math.max(0, shake - dt * 22);
+    lightning = Math.max(0, lightning - dt * 2.6);
+    whaleR.recoil = Math.max(0, whaleR.recoil - dt * 2);
+    whaleB.recoil = Math.max(0, whaleB.recoil - dt * 2);
+    whaleR.roar = Math.max(0, whaleR.roar - dt * 1.1);
+    whaleB.roar = Math.max(0, whaleB.roar - dt * 1.1);
+
+    // multiplier pulse detection
+    if (SIM.rMult > prevRM + 0.001) whaleR.pulse = 1; prevRM = SIM.rMult;
+    if (SIM.bMult > prevBM + 0.001) whaleB.pulse = 1; prevBM = SIM.bMult;
+    whaleR.pulse = Math.max(0, whaleR.pulse - dt * 1.4);
+    whaleB.pulse = Math.max(0, whaleB.pulse - dt * 1.4);
+
+    cx.save();
+    if (shake > 0.3) cx.translate(rand(-shake, shake), rand(-shake, shake));
+
+    drawSky();
+    drawSea();
+    drawDangerZones();
+    drawFish(fishR, 'red');
+    drawFish(fishB, 'blue');
+    drawRopeAndWhales();
+    drawParticles(dt);
+    drawPoolBar();
+    drawMatchPoint();
+    if (SIM.phase === 'settled') drawWinBanner();
+
+    cx.restore();
+}
+
+/* ---- sky ---- */
+function drawSky() {
+    const g = cx.createLinearGradient(0, 0, 0, seaLevel());
+    if (lightning > 0.02) {
+        const l = lightning * 0.5;
+        g.addColorStop(0, `rgb(${30 + 160 * l},${34 + 160 * l},${60 + 150 * l})`);
+        g.addColorStop(1, `rgb(${16 + 120 * l},${20 + 120 * l},${44 + 120 * l})`);
+    } else {
+        g.addColorStop(0, '#0a0e1e'); g.addColorStop(1, '#101731');
+    }
+    cx.fillStyle = g;
+    cx.fillRect(0, 0, W, seaLevel() + 20);
+
+    // stars
+    cx.fillStyle = '#fff';
+    for (const s of stars) {
+        cx.globalAlpha = 0.25 + 0.55 * Math.abs(Math.sin(T * 0.8 + s.tw));
+        cx.beginPath(); cx.arc(s.x * W, s.y * H, s.r, 0, TAU); cx.fill();
+    }
+    cx.globalAlpha = 1;
+
+    // moon
+    cx.fillStyle = '#f4f0dc';
+    cx.shadowColor = '#f4f0dc'; cx.shadowBlur = 30;
+    cx.beginPath(); cx.arc(W * 0.85, H * 0.13, 26, 0, TAU); cx.fill();
+    cx.shadowBlur = 0;
+    cx.fillStyle = '#0a0e1e';
+    cx.beginPath(); cx.arc(W * 0.85 + 10, H * 0.13 - 6, 22, 0, TAU); cx.fill();
+
+    // lightning bolt
+    if (lightning > 0.4) {
+        const x0 = rand(W * 0.2, W * 0.8);
+        cx.strokeStyle = `rgba(255,255,240,${lightning})`;
+        cx.lineWidth = 2.5; cx.shadowColor = '#fff'; cx.shadowBlur = 16;
+        cx.beginPath(); cx.moveTo(x0, 0);
+        let y = 0, x = x0;
+        while (y < seaLevel() * 0.8) { x += rand(-34, 34); y += rand(24, 55); cx.lineTo(x, y); }
+        cx.stroke(); cx.shadowBlur = 0;
+    }
+}
+
+/* ---- sea ---- */
+function drawSea() {
+    // deep gradient
+    const g = cx.createLinearGradient(0, seaLevel() - 20, 0, H);
+    g.addColorStop(0, '#0e2140'); g.addColorStop(0.5, '#081428'); g.addColorStop(1, '#03070f');
+    cx.fillStyle = g;
+
+    cx.beginPath();
+    cx.moveTo(0, H);
+    cx.lineTo(0, waterY(0));
+    for (let x = 0; x <= W; x += 14) cx.lineTo(x, waterY(x));
+    cx.lineTo(W, H);
+    cx.closePath(); cx.fill();
+
+    // team-colored glow under each side, intensity from dominance
+    const mx = posToX(SIM.pos);
+    const redGlow = cx.createRadialGradient(mx - W * 0.25, seaLevel() + 60, 10, mx - W * 0.25, seaLevel() + 60, W * 0.32);
+    redGlow.addColorStop(0, `rgba(255,42,95,${0.10 + 0.13 * (1 - SIM.pos / 100)})`);
+    redGlow.addColorStop(1, 'transparent');
+    cx.fillStyle = redGlow; cx.fillRect(0, seaLevel() - 30, W, H);
+    const blueGlow = cx.createRadialGradient(mx + W * 0.25, seaLevel() + 60, 10, mx + W * 0.25, seaLevel() + 60, W * 0.32);
+    blueGlow.addColorStop(0, `rgba(42,134,255,${0.10 + 0.13 * (SIM.pos / 100)})`);
+    blueGlow.addColorStop(1, 'transparent');
+    cx.fillStyle = blueGlow; cx.fillRect(0, seaLevel() - 30, W, H);
+
+    // surface highlight
+    cx.strokeStyle = 'rgba(180,220,255,0.25)';
+    cx.lineWidth = 1.6;
+    cx.beginPath();
+    for (let x = 0; x <= W; x += 14) { const y = waterY(x); x === 0 ? cx.moveTo(x, y) : cx.lineTo(x, y); }
+    cx.stroke();
+
+    // bubbles
+    cx.fillStyle = 'rgba(200,230,255,0.18)';
+    for (const b of bubbles) {
+        b.y -= b.s * 0.0006;
+        if (b.y * H < seaLevel() + 20) { b.y = 1; b.x = Math.random(); }
+        cx.beginPath(); cx.arc(b.x * W, b.y * H, b.r, 0, TAU); cx.fill();
+    }
+}
+
+/* ---- goal zones at rope extremes ---- */
+function drawDangerZones() {
+    const zl = posToX(15), zr = posToX(85);
+    const inRed = SIM.pos < 15, inBlue = SIM.pos > 85;
+    const puls = 0.5 + 0.5 * Math.sin(T * 8);
+
+    cx.fillStyle = `rgba(255,42,95,${inRed ? 0.10 + 0.10 * puls : 0.04})`;
+    cx.fillRect(0, seaLevel() - 140, zl - trackL() + trackL(), H);
+    cx.fillStyle = `rgba(42,134,255,${inBlue ? 0.10 + 0.10 * puls : 0.04})`;
+    cx.fillRect(zr, seaLevel() - 140, W - zr, H);
+
+    // goal posts
+    for (const [x, col, active] of [[posToX(4), '255,42,95', inRed], [posToX(96), '42,134,255', inBlue]]) {
+        cx.strokeStyle = `rgba(${col},${active ? 0.55 + 0.4 * puls : 0.3})`;
+        cx.lineWidth = active ? 4 : 2;
+        cx.setLineDash([10, 8]);
+        cx.beginPath(); cx.moveTo(x, seaLevel() - 130); cx.lineTo(x, seaLevel() + 130); cx.stroke();
+        cx.setLineDash([]);
+    }
+}
+
+/* ---- fish armies ---- */
+function drawFish(arr, team) {
+    const col = team === 'red' ? '#ff5c84' : '#5ca4ff';
+    const wx = teamWaterX(team);
+    const dir = team === 'red' ? -1 : 1; // fish pull away from center
+    for (const f of arr) {
+        const fx = wx + dir * f.ox;
+        const fy = waterY(fx) + 46 + f.oy + Math.sin(T * 2 * f.sp + f.ph) * 5;
+        const tail = Math.sin(T * 9 * f.sp + f.ph) * f.s * 0.5;
+        cx.fillStyle = col;
+        cx.globalAlpha = 0.85;
+        // body
+        cx.beginPath();
+        cx.ellipse(fx, fy, f.s, f.s * 0.55, 0, 0, TAU);
+        cx.fill();
+        // eye
+        cx.fillStyle = '#0a0e18';
+        cx.beginPath(); cx.arc(fx + dir * f.s * 0.55, fy - f.s * 0.12, Math.max(1, f.s * 0.16), 0, TAU); cx.fill();
+        cx.fillStyle = col;
+        // tail (points toward center — they're pulling away)
+        cx.beginPath();
+        cx.moveTo(fx - dir * f.s, fy);
+        cx.lineTo(fx - dir * (f.s + f.s * 0.9), fy - f.s * 0.55 + tail);
+        cx.lineTo(fx - dir * (f.s + f.s * 0.9), fy + f.s * 0.55 + tail);
+        cx.closePath(); cx.fill();
+        cx.globalAlpha = 1;
+    }
+}
+
+/* ---- whales + rope + chest ---- */
+function drawRopeAndWhales() {
+    const mx = posToX(SIM.pos);
+    const rx = teamWaterX('red'), bx = teamWaterX('blue');
+    const ry = waterY(rx) + 14 + whaleR.sink * 160;
+    const by = waterY(bx) + 14 + whaleB.sink * 160;
+
+    // winner breaches out of the water, loser sinks belly-up
+    if (SIM.phase === 'settled') {
+        if (SIM.winner === 'red') { whaleB.sink = Math.min(1, whaleB.sink + 0.004); }
+        else { whaleR.sink = Math.min(1, whaleR.sink + 0.004); }
+    }
+    const rBounce = breachY(whaleR, 'red', rx);
+    const bBounce = breachY(whaleB, 'blue', bx);
+
+    // tension: pools close together + live = taut, vibrating rope
+    const total = SIM.red + SIM.blue;
+    const balance = total > 0 ? 1 - Math.abs(SIM.red - SIM.blue) / total : 0;
+    const tension = SIM.phase === 'live' ? balance : 0.2;
+    const sag = lerp(46, 10, tension);
+    const vib = tension > 0.55 ? (tension - 0.55) * 14 : 0;
+
+    const chestY = waterY(mx) - 6 + Math.sin(T * 3) * 4;
+
+    // rope (two quadratic segments through the chest)
+    cx.strokeStyle = '#c9a06a';
+    cx.lineWidth = 5;
+    cx.shadowColor = 'rgba(0,0,0,0.6)'; cx.shadowBlur = 6;
+    cx.beginPath();
+    cx.moveTo(rx + 60, ry - rBounce);
+    cx.quadraticCurveTo((rx + mx) / 2 + rand(-vib, vib), Math.max(ry, chestY) + sag + rand(-vib, vib), mx, chestY);
+    cx.quadraticCurveTo((mx + bx) / 2 + rand(-vib, vib), Math.max(by, chestY) + sag + rand(-vib, vib), bx - 60, by - bBounce);
+    cx.stroke();
+    // rope inner highlight
+    cx.strokeStyle = 'rgba(255,224,160,0.45)';
+    cx.lineWidth = 1.6;
+    cx.stroke();
+    cx.shadowBlur = 0;
+
+    // tension sparks at chest
+    if (vib > 2 && Math.random() < 0.5) {
+        particles.push({ kind: 'spark', x: mx + rand(-6, 6), y: chestY + rand(-6, 6), vx: rand(-50, 50), vy: rand(-80, -20), life: 0, maxLife: 0.4, size: rand(1.5, 3) });
+    }
+
+    drawWhale(rx, ry - rBounce, 'red', whaleR);
+    drawWhale(bx, by - bBounce, 'blue', whaleB);
+    drawChest(mx, chestY);
+    drawMultTag(rx, ry - 120 - rBounce, SIM.rMult, 'red', whaleR.pulse);
+    drawMultTag(bx, by - 120 - bBounce, SIM.bMult, 'blue', whaleB.pulse);
+}
+
+/* winner celebration: real breach jumps with splashdown */
+function breachY(st, team, x) {
+    const celebrating = SIM.phase === 'settled' && SIM.winner === team;
+    if (!celebrating) { st.airborne = false; return 0; }
+    const h = Math.pow(Math.abs(Math.sin(T * 2.6)), 1.4) * 110;
+    if (h > 30) {
+        st.airborne = true;
+    } else if (st.airborne) {
+        st.airborne = false;
+        // splashdown!
+        for (let j = 0; j < 18; j++) {
+            particles.push({ kind: 'spray', x: x + rand(-80, 80), y: waterY(x), vx: rand(-140, 140), vy: rand(-280, -60), life: 0, maxLife: 0.8, size: rand(2, 5) });
+        }
+        particles.push({ kind: 'ripple', x, y: waterY(x), life: 0, maxLife: 1, size: 30 });
+        sndSplash();
+    }
+    return h;
+}
+
+function smoothPath(pts) {
+    cx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length - 1; i++) {
+        const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2;
+        cx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+    }
+    cx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+}
+
+/* ---- expressive whale ----
+   Spine-based body that swims, strains, panics, roars, breaches
+   and sinks belly-up. Eye tracks the mouse. Click to poke. */
+function drawWhale(x, y, team, st) {
+    const facing = team === 'red' ? 1 : -1;   // red faces right (toward center)
+    const live = SIM.phase === 'live';
+    const winning = live && (team === 'red') === (SIM.pos < 50);
+    const dom = Math.abs(SIM.pos - 50) / 46;
+    const effort = winning ? dom : 0;                          // hauling hard
+    const fear = live && !winning && SIM.pos !== 50 ? dom : 0; // being dragged
+    const celebrating = SIM.phase === 'settled' && SIM.winner === team;
+    const defeated = st.sink > 0.05;
+
+    // heave-ho: rhythmic tug pulses while battling
+    const heave = live ? Math.pow((Math.sin(T * 3.1 + st.heavePh) + 1) / 2, 3) : 0;
+    const targetLean = live
+        ? (winning ? -(0.14 + 0.10 * heave) * (0.4 + dom) : (0.10 + 0.06 * heave) * (0.4 + dom))
+        : 0;
+    st.lean = lerp(st.lean, targetLean + (defeated ? 0.9 : 0), 0.07);
+
+    // blinking
+    st.nextBlink -= 1 / 60;
+    if (st.nextBlink <= 0) { st.blink = 1; st.nextBlink = rand(1.5, 4.5); }
+    st.blink = Math.max(0, st.blink - 0.08);
+    const eyeOpen = defeated ? 1 : 1 - Math.sin(Math.min(1, st.blink) * Math.PI) * 0.92;
+
+    const s = 1 + Math.min(0.35, (team === 'red' ? SIM.red : SIM.blue) / 120000); // grows with pool
+    const recoilS = 1 + st.recoil * 0.12;
+    const bob = Math.sin(T * 1.6 + (team === 'red' ? 0 : 2)) * 5;
+
+    // remember screen position for mouse poking
+    st.sx = x; st.sy = y + bob; st.srad = 100 * s;
+
+    cx.save();
+    cx.translate(x, y + bob);
+    cx.rotate(st.lean * facing);
+    if (celebrating) cx.rotate(Math.sin(T * 2.6) * 0.28 * facing); // aerial flip tilt
+    cx.scale(facing * s * recoilS, s * recoilS);
+    cx.globalAlpha = 1 - st.sink * 0.55;
+
+    const body = team === 'red' ? '#e02052' : '#2272e0';
+    const dark = team === 'red' ? '#8f1234' : '#12468f';
+    const belly = team === 'red' ? '#ff7ea0' : '#7eb6ff';
+
+    /* spine: nose (i=0, front) → tail (i=N, rear); a swim wave travels down it */
+    const N = 7;
+    const swimSpeed = 4 + effort * 7 + fear * 9;       // tail beats faster under strain/panic
+    const amp = 4 + effort * 9 + fear * 12;
+    const widths = [30, 44, 46, 40, 30, 19, 10, 6];
+    const spine = [];
+    for (let i = 0; i <= N; i++) {
+        const u = i / N;
+        spine.push({
+            x: 85 - u * 180,
+            y: Math.sin(T * swimSpeed - u * 2.6) * amp * Math.pow(u, 1.6),
+        });
+    }
+
+    // tail flukes — thrash harder the more the whale fights
+    const tp = spine[N];
+    const thrash = Math.sin(T * swimSpeed - 2.9) * (10 + effort * 8 + fear * 10);
+    cx.fillStyle = dark;
+    cx.beginPath();
+    cx.moveTo(tp.x + 12, tp.y - 2);
+    cx.quadraticCurveTo(tp.x - 26, tp.y - 34 + thrash, tp.x - 44, tp.y - 46 + thrash);
+    cx.quadraticCurveTo(tp.x - 20, tp.y - 4, tp.x - 44, tp.y + 40 + thrash);
+    cx.quadraticCurveTo(tp.x - 26, tp.y + 26 + thrash, tp.x + 12, tp.y + 6);
+    cx.closePath(); cx.fill();
+
+    // body outline traced around the animated spine
+    const bg = cx.createLinearGradient(0, -50, 0, 34);
+    bg.addColorStop(0, body); bg.addColorStop(1, dark);
+    cx.fillStyle = bg;
+    const outline = [{ x: 97, y: spine[0].y + 2 }];
+    for (let i = 0; i <= N; i++) outline.push({ x: spine[i].x, y: spine[i].y - widths[i] });
+    for (let i = N; i >= 0; i--) outline.push({ x: spine[i].x, y: spine[i].y + widths[i] * 0.78 });
+    cx.beginPath(); smoothPath(outline); cx.closePath(); cx.fill();
+
+    // dorsal fin
+    const dor = spine[3];
+    cx.fillStyle = dark;
+    cx.beginPath();
+    cx.moveTo(dor.x + 18, dor.y - widths[3] + 4);
+    cx.quadraticCurveTo(dor.x - 2, dor.y - widths[3] - 26, dor.x - 22, dor.y - widths[3] - 18);
+    cx.quadraticCurveTo(dor.x - 16, dor.y - widths[3] + 2, dor.x - 26, dor.y - widths[3] + 6);
+    cx.closePath(); cx.fill();
+
+    // belly
+    cx.fillStyle = belly;
+    cx.globalAlpha = (1 - st.sink * 0.55) * 0.45;
+    cx.beginPath(); cx.ellipse(12, 20, 58, 12, 0, 0, TAU); cx.fill();
+    cx.globalAlpha = 1 - st.sink * 0.55;
+
+    // pectoral fin — flaps frantically when panicking
+    const flap = Math.sin(T * (fear > 0.3 ? 16 : 5)) * (6 + fear * 14);
+    cx.fillStyle = dark;
+    cx.save();
+    cx.translate(18, 20); cx.rotate((20 + flap) * Math.PI / 180);
+    cx.beginPath(); cx.ellipse(0, 14, 10, 24, 0, 0, TAU); cx.fill();
+    cx.restore();
+
+    /* ---- face ---- */
+    const headY = spine[0].y;
+
+    // eye looks at your mouse when it's near, otherwise at the chest
+    let lookX = 1, lookY = 0.15;
+    const mdx = (MOUSE.x - x) * facing, mdy = MOUSE.y - (y + bob);
+    const md = Math.hypot(mdx, mdy);
+    if (md < 280) { lookX = mdx / (md || 1); lookY = mdy / (md || 1); }
+
+    if (defeated) {
+        // X eyes
+        cx.strokeStyle = '#fff'; cx.lineWidth = 4; cx.lineCap = 'round';
+        cx.beginPath();
+        cx.moveTo(44, headY - 26); cx.lineTo(60, headY - 12);
+        cx.moveTo(60, headY - 26); cx.lineTo(44, headY - 12);
+        cx.stroke();
+    } else {
+        cx.fillStyle = '#fff';
+        cx.beginPath(); cx.ellipse(52, headY - 19, 9, Math.max(0.8, 9 * eyeOpen), 0, 0, TAU); cx.fill();
+        cx.fillStyle = '#0a0a12';
+        cx.beginPath(); cx.arc(52 + lookX * 3.5, headY - 19 + lookY * 3.2 * eyeOpen, 4.2, 0, TAU); cx.fill();
+        cx.fillStyle = '#fff';
+        cx.beginPath(); cx.arc(53.5 + lookX * 3.5, headY - 21.5 + lookY * 3.2, 1.4, 0, TAU); cx.fill();
+
+        // brow: furious when straining/roaring, raised in worry when losing
+        cx.strokeStyle = dark; cx.lineWidth = 5; cx.lineCap = 'round';
+        cx.beginPath();
+        if (effort > 0.1 || st.roar > 0.05) { cx.moveTo(40, headY - 35); cx.lineTo(63, headY - 27); }
+        else if (fear > 0.15) { cx.moveTo(42, headY - 30 - fear * 8); cx.lineTo(62, headY - 33 - fear * 3); }
+        else { cx.moveTo(42, headY - 32); cx.lineTo(62, headY - 32); }
+        cx.stroke();
+    }
+
+    // mouth: roar > victory grin > worried frown > gritted teeth > neutral
+    if (st.roar > 0.05 && !defeated) {
+        const open = Math.sin(Math.min(1, st.roar) * Math.PI / 2) * 22;
+        cx.fillStyle = '#3d0716';
+        cx.beginPath();
+        cx.moveTo(88, headY + 2);
+        cx.quadraticCurveTo(62, headY + 6, 46, headY + 8);
+        cx.quadraticCurveTo(62, headY + 10 + open, 86, headY + 8 + open);
+        cx.closePath(); cx.fill();
+        cx.fillStyle = '#ff8faa';
+        cx.beginPath(); cx.ellipse(64, headY + 9 + open * 0.7, 10, 4, 0, 0, TAU); cx.fill();
+    } else if (celebrating) {
+        cx.strokeStyle = dark; cx.lineWidth = 4; cx.lineCap = 'round';
+        cx.beginPath(); cx.moveTo(84, headY + 2); cx.quadraticCurveTo(66, headY + 16, 46, headY + 8); cx.stroke();
+    } else if (fear > 0.25 || defeated) {
+        cx.strokeStyle = dark; cx.lineWidth = 4; cx.lineCap = 'round';
+        cx.beginPath(); cx.moveTo(84, headY + 9); cx.quadraticCurveTo(66, headY + 1, 48, headY + 9); cx.stroke();
+    } else if (effort > 0.15) {
+        // gritted teeth clamped on the rope
+        cx.fillStyle = '#fff';
+        cx.fillRect(50, headY + 2, 32, 7);
+        cx.strokeStyle = dark; cx.lineWidth = 1.5;
+        for (let tx = 56; tx <= 78; tx += 6) { cx.beginPath(); cx.moveTo(tx, headY + 2); cx.lineTo(tx, headY + 9); cx.stroke(); }
+        cx.lineWidth = 3;
+        cx.strokeRect(50, headY + 2, 32, 7);
+    } else {
+        cx.strokeStyle = dark; cx.lineWidth = 4; cx.lineCap = 'round';
+        cx.beginPath(); cx.moveTo(84, headY + 4); cx.quadraticCurveTo(64, headY + 9, 46, headY + 6); cx.stroke();
+    }
+
+    // rope grip point at the mouth
+    cx.fillStyle = '#c9a06a';
+    cx.beginPath(); cx.arc(78, headY + 4, 4, 0, TAU); cx.fill();
+
+    cx.restore();
+    cx.globalAlpha = 1;
+
+    /* ---- emotion particles ---- */
+    if (fear > 0.5 && Math.random() < 0.09) {
+        // sweat flying off the head
+        particles.push({ kind: 'spray', x: x + facing * 40 * s, y: y + bob - 50 * s, vx: facing * rand(40, 100), vy: rand(-150, -60), life: 0, maxLife: 0.6, size: rand(2, 4) });
+    }
+    if ((effort > 0.5 || st.roar > 0.4) && Math.random() < 0.03) {
+        // blowhole spout under strain
+        for (let i = 0; i < 8; i++) {
+            particles.push({ kind: 'spray', x: x + rand(-8, 8), y: y + bob - 62 * s, vx: rand(-26, 26), vy: rand(-170, -90), life: 0, maxLife: 0.7, size: rand(1.5, 3.5) });
+        }
+    }
+    if (defeated && Math.random() < 0.12) {
+        // bubbles rising from the sunken loser
+        particles.push({ kind: 'spray', x: x + rand(-40, 40), y: y + rand(-10, 30), vx: 0, vy: rand(-60, -20), life: 0, maxLife: 1.2, size: rand(2, 5) });
+    }
+}
+
+function drawChest(x, y) {
+    cx.save();
+    cx.translate(x, y);
+    cx.rotate(Math.sin(T * 2.4) * 0.08);
+    // glow
+    cx.shadowColor = '#ffb800'; cx.shadowBlur = 26;
+    cx.fillStyle = '#8a5a22';
+    cx.fillRect(-20, -14, 40, 26);
+    cx.shadowBlur = 0;
+    // lid
+    cx.fillStyle = '#a86f2d';
+    cx.beginPath();
+    cx.moveTo(-20, -14); cx.quadraticCurveTo(0, -30, 20, -14);
+    cx.closePath(); cx.fill();
+    // bands
+    cx.fillStyle = '#ffb800';
+    cx.fillRect(-3, -26, 6, 38);
+    cx.fillRect(-20, -4, 40, 4);
+    // sparkle
+    const sp = Math.abs(Math.sin(T * 3.2));
+    cx.fillStyle = `rgba(255,240,180,${sp})`;
+    cx.beginPath(); cx.arc(10, -18, 2.5, 0, TAU); cx.fill();
+    cx.restore();
+}
+
+function drawMultTag(x, y, mult, team, pulse) {
+    const dead = mult <= 0;
+    const scale = 1 + pulse * 0.18;
+    cx.save();
+    cx.translate(x, y);
+    cx.scale(scale, scale);
+    cx.font = '900 30px "Segoe UI", sans-serif';
+    cx.textAlign = 'center';
+    const col = dead ? '#4a4f63' : (team === 'red' ? '#ff2a5f' : '#2a86ff');
+    cx.shadowColor = col; cx.shadowBlur = dead ? 0 : 18;
+    cx.fillStyle = col;
+    cx.fillText(dead ? '0.00x 💀' : mult.toFixed(2) + 'x', 0, 0);
+    cx.shadowBlur = 0;
+    cx.font = '700 11px "Segoe UI", sans-serif';
+    cx.fillStyle = 'rgba(255,255,255,0.55)';
+    cx.fillText('TEAM ' + team.toUpperCase(), 0, 18);
+    cx.restore();
+}
+
+/* ---- pool tug bar at top ---- */
+function drawPoolBar() {
+    const bw = W * 0.5, bx0 = (W - bw) / 2, by0 = 74, bh = 14;
+    const total = SIM.red + SIM.blue;
+    const split = total > 0 ? SIM.red / total : 0.5;
+
+    cx.fillStyle = 'rgba(0,0,0,0.5)';
+    roundRect(bx0 - 4, by0 - 4, bw + 8, bh + 8, 10); cx.fill();
+    // red side
+    cx.fillStyle = '#ff2a5f';
+    roundRect(bx0, by0, bw * split, bh, 6); cx.fill();
+    // blue side
+    cx.fillStyle = '#2a86ff';
+    roundRect(bx0 + bw * split, by0, bw * (1 - split), bh, 6); cx.fill();
+    // split notch
+    cx.fillStyle = '#fff';
+    cx.fillRect(bx0 + bw * split - 1.5, by0 - 5, 3, bh + 10);
+
+    cx.font = '800 13px "Segoe UI", sans-serif';
+    cx.textAlign = 'right'; cx.fillStyle = '#ff5c84';
+    cx.fillText('🪙' + Math.floor(SIM.red).toLocaleString(), bx0 - 14, by0 + 12);
+    cx.textAlign = 'left'; cx.fillStyle = '#5ca4ff';
+    cx.fillText('🪙' + Math.floor(SIM.blue).toLocaleString(), bx0 + bw + 14, by0 + 12);
+}
+
+function roundRect(x, y, w, h, r) {
+    r = Math.min(r, h / 2, w / 2 < 0 ? 0 : w / 2);
+    cx.beginPath();
+    cx.moveTo(x + r, y);
+    cx.arcTo(x + w, y, x + w, y + h, r);
+    cx.arcTo(x + w, y + h, x, y + h, r);
+    cx.arcTo(x, y + h, x, y, r);
+    cx.arcTo(x, y, x + w, y, r);
+    cx.closePath();
+}
+
+/* ---- match point banner ---- */
+function drawMatchPoint() {
+    if (SIM.phase !== 'live') return;
+    if (SIM.pos >= 15 && SIM.pos <= 85) return;
+    const team = SIM.pos < 15 ? 'RED' : 'BLUE';
+    const col = SIM.pos < 15 ? '#ff2a5f' : '#2a86ff';
+    const fl = 0.6 + 0.4 * Math.sin(T * 10);
+    cx.font = '900 30px "Segoe UI", sans-serif';
+    cx.textAlign = 'center';
+    cx.fillStyle = col; cx.globalAlpha = fl;
+    cx.shadowColor = col; cx.shadowBlur = 24;
+    cx.fillText(`⚡ ${team} CLOSING IT OUT ⚡`, W / 2, H * 0.30);
+    cx.shadowBlur = 0; cx.globalAlpha = 1;
+}
+
+/* ---- win banner ---- */
+function drawWinBanner() {
+    const col = SIM.winner === 'red' ? '#ff2a5f' : '#2a86ff';
+    const m = SIM.winner === 'red' ? SIM.rMult : SIM.bMult;
+    cx.textAlign = 'center';
+    cx.font = '900 54px "Segoe UI", sans-serif';
+    cx.fillStyle = col;
+    cx.shadowColor = col; cx.shadowBlur = 34;
+    cx.fillText(`TEAM ${SIM.winner.toUpperCase()} WINS`, W / 2, H * 0.30);
+    cx.shadowBlur = 0;
+    cx.font = '800 20px "Segoe UI", sans-serif';
+    cx.fillStyle = '#ffb800';
+    cx.fillText(`Final multiplier ${m.toFixed(2)}x`, W / 2, H * 0.30 + 36);
+}
+
+/* ---- particles ---- */
+function drawParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.life += dt;
+        if (p.life > p.maxLife) { particles.splice(i, 1); continue; }
+        if (p.life < 0) continue;
+        const t = p.life / p.maxLife;
+
+        if (p.kind === 'coin') {
+            p.vy += 380 * dt;
+            p.x += p.vx * dt; p.y += p.vy * dt;
+            const wy = waterY(p.x);
+            if (p.y >= wy && p.vy > 0) {
+                // splash!
+                for (let j = 0; j < 4; j++) {
+                    particles.push({ kind: 'spray', x: p.x, y: wy, vx: rand(-60, 60), vy: rand(-160, -60), life: 0, maxLife: 0.5, size: rand(1, 3) });
+                }
+                particles.push({ kind: 'ripple', x: p.x, y: wy, life: 0, maxLife: 0.8, size: 4 });
+                particles.splice(i, 1);
+                continue;
+            }
+            cx.fillStyle = '#ffb800';
+            cx.strokeStyle = '#c98a00';
+            cx.lineWidth = 1;
+            cx.beginPath();
+            cx.ellipse(p.x, p.y, p.size, p.size * Math.abs(Math.sin(p.life * 9)), 0, 0, TAU);
+            cx.fill(); cx.stroke();
+        }
+        else if (p.kind === 'spray') {
+            p.vy += 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+            cx.fillStyle = `rgba(200,230,255,${1 - t})`;
+            cx.beginPath(); cx.arc(p.x, p.y, p.size, 0, TAU); cx.fill();
+        }
+        else if (p.kind === 'spark') {
+            p.vy += 200 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+            cx.fillStyle = `rgba(255,214,90,${1 - t})`;
+            cx.beginPath(); cx.arc(p.x, p.y, p.size, 0, TAU); cx.fill();
+        }
+        else if (p.kind === 'ripple') {
+            cx.strokeStyle = `rgba(200,230,255,${(1 - t) * 0.6})`;
+            cx.lineWidth = 1.5;
+            cx.beginPath();
+            cx.ellipse(p.x, p.y, p.size + t * 46, (p.size + t * 46) * 0.28, 0, 0, TAU);
+            cx.stroke();
+        }
+        else if (p.kind === 'ring') {
+            const col = p.team === 'red' ? '255,42,95' : '42,134,255';
+            cx.strokeStyle = `rgba(${col},${(1 - t)})`;
+            cx.lineWidth = 4 * (1 - t) + 1;
+            cx.beginPath();
+            cx.ellipse(p.x, p.y, p.size + t * 220, (p.size + t * 220) * 0.4, 0, 0, TAU);
+            cx.stroke();
+        }
+        else if (p.kind === 'text') {
+            p.y += p.vy * dt;
+            const col = p.team === 'red' ? '#ff5c84' : '#5ca4ff';
+            cx.font = `900 ${p.size}px "Segoe UI", sans-serif`;
+            cx.textAlign = 'center';
+            cx.fillStyle = col;
+            cx.globalAlpha = 1 - t;
+            cx.fillText(p.text, p.x, p.y);
+            cx.globalAlpha = 1;
+        }
+        else if (p.kind === 'banner') {
+            const a = t < 0.1 ? t / 0.1 : (t > 0.85 ? (1 - t) / 0.15 : 1);
+            cx.font = '900 24px "Segoe UI", sans-serif';
+            cx.textAlign = 'center';
+            cx.fillStyle = `rgba(255,184,0,${a})`;
+            cx.shadowColor = '#ffb800'; cx.shadowBlur = 20 * a;
+            cx.fillText(p.text, p.x, p.y);
+            cx.shadowBlur = 0;
+        }
+        else if (p.kind === 'conf') {
+            p.x += p.vx * dt; p.y += p.vy * dt;
+            cx.fillStyle = p.color;
+            cx.save();
+            cx.translate(p.x, p.y);
+            cx.rotate(p.life * 6);
+            cx.globalAlpha = 1 - t * 0.5;
+            cx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 1.4);
+            cx.restore();
+            cx.globalAlpha = 1;
+        }
+    }
+    // cap
+    if (particles.length > 500) particles.splice(0, particles.length - 500);
+}
+
+/* ============================================================
+   MAIN LOOP
+   ============================================================ */
+let last = performance.now();
+function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    T += dt;
+    simStep(dt);
+    syncFish();
+    cx.clearRect(0, 0, W, H);
+    render(dt);
+    requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

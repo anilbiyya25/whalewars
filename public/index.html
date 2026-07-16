@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whale Wars — Live Arena</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<!-- ============ NAME MODAL ============ -->
+<div class="modal-overlay show" id="name-modal">
+    <div class="modal-card">
+        <h2>🐋 Whale Wars</h2>
+        <p>Two teams. One rope. 45 seconds.<br>Pick a battle name to enter the live arena.</p>
+        <input type="text" id="name-input" placeholder="Your battle name" maxlength="16" autocomplete="off">
+        <button id="enter-btn" onclick="enterArena()">Enter the Arena</button>
+        <div class="modal-note">100% virtual coins — 🪙10,000 free on signup, no real money</div>
+    </div>
+</div>
+
+<!-- ============ CONNECTION BANNER ============ -->
+<div id="conn-banner">⚡ Reconnecting to arena…</div>
+
+<!-- ============ HEADER ============ -->
+<header>
+    <div class="logo-area">
+        <h1>🐋 Whale Wars</h1>
+        <div class="round-badge">Round <strong id="round-num">–</strong></div>
+        <div class="history-chips" id="history-chips"><span class="h-label">Last:</span></div>
+    </div>
+    <div class="stats-bar">
+        <div class="stat-item"><span>Online:</span> <strong id="online-count">–</strong></div>
+        <div class="stat-item"><span>Coins:</span> <strong id="user-balance">🪙0</strong></div>
+        <button class="refill-btn" id="refill-btn" style="display:none;" onclick="refillDemo()">+ Free Coins</button>
+        <button class="icon-btn" id="sound-btn" onclick="toggleSound()" title="Toggle sound">🔊</button>
+    </div>
+</header>
+
+<!-- ============ MAIN ============ -->
+<div class="main-container">
+
+    <div class="game-screen">
+        <div class="arena-zone" id="arena">
+            <canvas id="arena-canvas"></canvas>
+
+            <div class="whale-banner" id="whale-banner">🐋 Whale Alert</div>
+            <div id="floaters"></div>
+
+            <div class="timer-container">
+                <div class="timer-wrap">
+                    <svg width="92" height="92" viewBox="0 0 92 92">
+                        <circle class="timer-ring-bg" cx="46" cy="46" r="40"></circle>
+                        <circle class="timer-ring-fg" id="timer-ring" cx="46" cy="46" r="40"
+                                stroke-dasharray="251.33" stroke-dashoffset="0"></circle>
+                    </svg>
+                    <div id="timer-text">–</div>
+                </div>
+                <div id="timer-phase">Connecting…</div>
+            </div>
+
+            <div class="hud-display">
+                <div class="team-hud red-hud" id="red-hud">
+                    <div class="hud-title">Team Red</div>
+                    <div class="hud-mult" id="red-mult">1.00x</div>
+                    <div class="hud-pool"><span>Pool</span> <b id="red-pool">$0</b></div>
+                    <div class="hud-bettors" id="red-bettors">0 fighters</div>
+                </div>
+                <div class="team-hud blue-hud" id="blue-hud">
+                    <div class="hud-title">Team Blue</div>
+                    <div class="hud-mult" id="blue-mult">1.00x</div>
+                    <div class="hud-pool"><span>Pool</span> <b id="blue-pool">$0</b></div>
+                    <div class="hud-bettors" id="blue-bettors">0 fighters</div>
+                </div>
+            </div>
+
+            <div class="result-overlay" id="result-overlay">
+                <div class="result-card">
+                    <div id="ov-title">Team Red Wins</div>
+                    <div id="ov-sub"></div>
+                    <div id="ov-outcome"></div>
+                    <div id="ov-next">Next round in <strong id="ov-count">–</strong>s</div>
+                </div>
+            </div>
+            <div id="confetti-layer"></div>
+        </div>
+
+        <!-- ============ CONTROLS ============ -->
+        <div class="control-panel">
+            <div class="bet-input-block">
+                <div class="input-row" id="bet-input-row">
+                    <label for="bet-amount">Stake 🪙</label>
+                    <input type="number" id="bet-amount" value="100" min="10" step="10">
+                </div>
+                <div class="quick-bet-chips">
+                    <button class="chip-btn" onclick="setBet(50)">50</button>
+                    <button class="chip-btn" onclick="setBet(250)">250</button>
+                    <button class="chip-btn" onclick="setBet(1000)">1K</button>
+                    <button class="chip-btn gold" onclick="setBet(5000)">5K 🐋</button>
+                    <button class="chip-btn" onclick="mulBet(0.5)">½</button>
+                    <button class="chip-btn" onclick="mulBet(2)">2×</button>
+                </div>
+                <div class="edge-note" id="edge-note">House edge applied on payouts · 🪙5,000+ triggers Whale Alert</div>
+            </div>
+
+            <div class="action-block">
+                <button class="team-select-btn btn-red-join" id="join-red" onclick="joinTeam('red')">
+                    Join Red <span>Bet Red drags the rope</span>
+                </button>
+                <button class="team-select-btn btn-blue-join" id="join-blue" onclick="joinTeam('blue')">
+                    Join Blue <span>Bet Blue drags the rope</span>
+                </button>
+
+                <div class="position-card" id="position-card">
+                    <div class="pc-head">Your Position <span class="team-tag" id="pos-team">RED</span></div>
+                    <div class="pc-row"><span>Total stake</span><strong id="pos-stake">$0</strong></div>
+                    <div class="pc-row"><span>Live value</span><strong id="pos-value">$0.00</strong></div>
+                    <div class="pc-row"><span>P/L</span><strong id="pos-profit">$0.00</strong></div>
+                </div>
+
+                <button class="btn-boost" id="boost-btn" onclick="injectBoost()">
+                    🚀 Boost <span id="boost-label">stake more mid-battle</span>
+                </button>
+                <button class="btn-cashout" id="cashout-btn" onclick="triggerCashout()">
+                    Cash Out <small id="cashout-val">$0.00</small>
+                </button>
+
+                <div class="spectate-note" id="spectate-note">
+                    👀 Spectating — you missed the betting window.<br>Next round opens shortly.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ SIDEBAR ============ -->
+    <div class="social-sidebar">
+        <div class="sidebar-tabs">
+            <button id="tab-chat" class="active" onclick="switchTab('chat')">💬 War Room</button>
+            <button id="tab-bets" onclick="switchTab('bets')">📡 Live Bets</button>
+            <button id="tab-leaders" onclick="switchTab('leaders')">🏆 Top</button>
+        </div>
+        <div class="feed-panel active" id="chat-box"></div>
+        <div class="feed-panel" id="bets-box"></div>
+        <div class="feed-panel" id="leaders-box"></div>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Trash talk the opposition..." maxlength="140">
+            <button onclick="sendChatMessage()">Send</button>
+        </div>
+    </div>
+</div>
+
+<div id="toast"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/client.js"></script>
+</body>
+</html>

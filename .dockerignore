@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+data
+.git
+.gitignore
+*.md
+arena-concept.html
+whalewars.html

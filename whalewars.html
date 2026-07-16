@@ -1,0 +1,1172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Whale Wars — Tug-of-War Arena</title>
+<style>
+:root {
+    --red: #ff2a5f;
+    --red-soft: rgba(255, 42, 95, 0.15);
+    --blue: #2a86ff;
+    --blue-soft: rgba(42, 134, 255, 0.15);
+    --bg: #0b0d14;
+    --panel: #141724;
+    --panel-2: #1a1e30;
+    --line: rgba(255,255,255,0.06);
+    --text: #ffffff;
+    --muted: #8189a0;
+    --gold: #ffb800;
+    --green: #00c853;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; user-select: none; }
+
+body { background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: 0.45; }
+
+/* ============ HEADER ============ */
+header {
+    background: rgba(0,0,0,0.45);
+    padding: 10px 20px;
+    display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--line);
+    backdrop-filter: blur(10px);
+    z-index: 50;
+}
+.logo-area { display: flex; align-items: center; gap: 14px; }
+.logo-area h1 {
+    font-size: 19px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase;
+    background: linear-gradient(45deg, var(--red), var(--gold), var(--blue));
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+.round-badge { font-size: 11px; color: var(--muted); background: var(--panel); padding: 4px 10px; border-radius: 20px; border: 1px solid var(--line); }
+.round-badge strong { color: var(--text); }
+
+.history-chips { display: flex; gap: 5px; align-items: center; }
+.history-chips .h-label { font-size: 10px; text-transform: uppercase; color: var(--muted); letter-spacing: 1px; margin-right: 4px; }
+.h-chip {
+    width: 20px; height: 20px; border-radius: 50%;
+    font-size: 10px; font-weight: 900; color: #fff;
+    display: flex; align-items: center; justify-content: center;
+    animation: chipPop 0.3s ease;
+}
+@keyframes chipPop { from { transform: scale(0); } to { transform: scale(1); } }
+.h-chip.red { background: var(--red); }
+.h-chip.blue { background: var(--blue); }
+
+.stats-bar { display: flex; gap: 18px; font-size: 14px; align-items: center; }
+.stat-item span { color: var(--muted); font-size: 12px; }
+.stat-item strong { color: var(--gold); font-variant-numeric: tabular-nums; }
+#online-count { color: var(--green); }
+.refill-btn {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--gold);
+    font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 6px;
+}
+.refill-btn:hover { border-color: var(--gold); }
+.icon-btn {
+    background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    width: 32px; height: 32px; border-radius: 8px; font-size: 15px;
+}
+
+/* ============ LAYOUT ============ */
+.main-container { display: flex; flex: 1; overflow: hidden; }
+.game-screen { flex: 3; display: flex; flex-direction: column; position: relative; border-right: 1px solid var(--line); min-width: 0; }
+.social-sidebar { flex: 1; min-width: 300px; max-width: 380px; background: var(--panel); display: flex; flex-direction: column; }
+
+/* ============ ARENA ============ */
+.arena-zone {
+    flex: 1; position: relative;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+    background:
+        radial-gradient(ellipse at 0% 50%, rgba(255,42,95,0.10), transparent 55%),
+        radial-gradient(ellipse at 100% 50%, rgba(42,134,255,0.10), transparent 55%),
+        var(--bg);
+}
+.arena-zone.shake { animation: arenaShake 0.5s ease; }
+@keyframes arenaShake {
+    0%, 100% { transform: translate(0,0); }
+    15% { transform: translate(-8px, 4px); }
+    30% { transform: translate(7px, -5px); }
+    45% { transform: translate(-6px, -3px); }
+    60% { transform: translate(5px, 4px); }
+    75% { transform: translate(-3px, 2px); }
+    90% { transform: translate(2px, -1px); }
+}
+
+.arena-bg-glow { position: absolute; inset: 0; display: flex; pointer-events: none; }
+.red-glow, .blue-glow { flex: 1; transition: background 0.25s ease; }
+
+/* centre line */
+.center-line {
+    position: absolute; left: 50%; top: 0; bottom: 0; width: 2px;
+    background: repeating-linear-gradient(to bottom, rgba(255,255,255,0.14) 0 8px, transparent 8px 18px);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+/* ---- Timer ---- */
+.timer-container { position: absolute; top: 26px; left: 50%; transform: translateX(-50%); text-align: center; z-index: 10; }
+.timer-wrap { position: relative; width: 92px; height: 92px; margin: 0 auto; }
+.timer-wrap svg { transform: rotate(-90deg); }
+.timer-ring-bg { fill: rgba(0,0,0,0.55); stroke: rgba(255,255,255,0.08); stroke-width: 5; }
+.timer-ring-fg { fill: none; stroke: var(--gold); stroke-width: 5; stroke-linecap: round; transition: stroke-dashoffset 0.15s linear, stroke 0.3s; }
+#timer-text {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-size: 26px; font-weight: 900; font-variant-numeric: tabular-nums;
+}
+#timer-phase {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 2px;
+    color: var(--gold); margin-top: 8px; font-weight: 800;
+    background: rgba(0,0,0,0.55); padding: 4px 12px; border-radius: 20px; display: inline-block;
+}
+#timer-phase.live { color: var(--red); animation: livePulse 1s infinite; }
+@keyframes livePulse { 50% { opacity: 0.55; } }
+
+/* ---- Team HUDs ---- */
+.hud-display { position: absolute; top: 26px; width: 100%; padding: 0 34px; display: flex; justify-content: space-between; pointer-events: none; z-index: 5; }
+.team-hud {
+    text-align: center; background: rgba(8,10,16,0.72); padding: 14px 26px;
+    border-radius: 14px; min-width: 185px; backdrop-filter: blur(6px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    border: 1px solid var(--line);
+    transition: transform 0.15s ease, box-shadow 0.3s ease;
+}
+.team-hud.red-hud { border-top: 4px solid var(--red); }
+.team-hud.blue-hud { border-top: 4px solid var(--blue); }
+.team-hud.winning { transform: scale(1.05); }
+.team-hud.red-hud.winning { box-shadow: 0 0 40px rgba(255,42,95,0.35); }
+.team-hud.blue-hud.winning { box-shadow: 0 0 40px rgba(42,134,255,0.35); }
+.hud-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); margin-bottom: 4px; font-weight: 700; }
+.hud-mult { font-size: 38px; font-weight: 900; font-variant-numeric: tabular-nums; line-height: 1; transition: color 0.2s; }
+.red-hud .hud-mult { color: var(--red); }
+.blue-hud .hud-mult { color: var(--blue); }
+.hud-mult.dead { color: #4a4f63 !important; }
+.hud-pool { font-size: 13px; margin-top: 6px; font-family: Consolas, monospace; color: var(--text); }
+.hud-pool span { color: var(--muted); }
+.hud-bettors { font-size: 10px; color: var(--muted); margin-top: 2px; }
+
+/* ---- Whale banner ---- */
+.whale-banner {
+    position: absolute; top: 148px; left: 50%;
+    transform: translateX(-50%) translateY(-60px) scale(0.9);
+    background: linear-gradient(90deg, transparent, rgba(255,184,0,0.25) 15%, rgba(255,184,0,0.95) 50%, rgba(255,184,0,0.25) 85%, transparent);
+    color: #000; font-weight: 900; padding: 11px 70px;
+    text-transform: uppercase; font-size: 14px; letter-spacing: 1px; white-space: nowrap;
+    opacity: 0; transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    z-index: 100; pointer-events: none;
+}
+.whale-banner.active { transform: translateX(-50%) translateY(0) scale(1); opacity: 1; }
+
+/* ---- Floating bet particles ---- */
+#floaters { position: absolute; inset: 0; pointer-events: none; z-index: 4; overflow: hidden; }
+.floater {
+    position: absolute; bottom: 18%;
+    font-weight: 900; font-size: 14px;
+    animation: floatUp 2.4s ease-out forwards;
+    text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+}
+.floater.big { font-size: 22px; }
+@keyframes floatUp {
+    0% { opacity: 0; transform: translateY(20px); }
+    12% { opacity: 1; }
+    100% { opacity: 0; transform: translateY(-160px); }
+}
+
+/* ---- Rope assembly ---- */
+.rope-assembly { position: relative; width: 82%; height: 120px; display: flex; align-items: center; }
+.rope-track {
+    position: relative; width: 100%; height: 10px;
+    background: rgba(255,255,255,0.07); border-radius: 5px;
+}
+/* dominance graduation ticks */
+.rope-ticks { position: absolute; width: 100%; top: 22px; height: 10px; }
+.rope-ticks i { position: absolute; top: 0; width: 1px; height: 7px; background: rgba(255,255,255,0.15); }
+.rope-ticks i.mid { height: 12px; width: 2px; background: rgba(255,255,255,0.35); }
+
+.rope-line {
+    position: absolute; left: -20px; right: -20px; top: 50%; transform: translateY(-50%);
+    height: 15px;
+    background: repeating-linear-gradient(55deg, #a48159 0 9px, #bd9c73 9px 18px);
+    box-shadow: 0 5px 16px rgba(0,0,0,0.6), inset 0 -3px 4px rgba(0,0,0,0.35);
+    border-radius: 8px;
+}
+.rope-marker {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    width: 26px; height: 50px; background: linear-gradient(180deg, #ffd257, var(--gold));
+    border-radius: 5px; box-shadow: 0 0 24px var(--gold);
+    z-index: 3;
+    transition: left 0.12s linear;
+}
+.rope-marker::after {
+    content: ''; position: absolute; bottom: -14px; left: 50%; transform: translateX(-50%);
+    border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 12px solid var(--gold);
+}
+/* tug crowds — orbs gripping the rope */
+.puller {
+    position: absolute; top: 50%;
+    border-radius: 50%; z-index: 2;
+    transition: left 0.12s linear;
+    animation: tugBob 0.7s ease-in-out infinite;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.6);
+}
+@keyframes tugBob { 50% { margin-top: -4px; } }
+.puller.red-p { background: radial-gradient(circle at 32% 30%, #ff7a9c, var(--red) 65%); }
+.puller.blue-p { background: radial-gradient(circle at 32% 30%, #7ab4ff, var(--blue) 65%); }
+
+.zone-label {
+    position: absolute; top: -34px; font-size: 10px; font-weight: 900;
+    text-transform: uppercase; letter-spacing: 2px; opacity: 0.5;
+}
+.zone-label.red-z { left: 0; color: var(--red); }
+.zone-label.blue-z { right: 0; color: var(--blue); }
+
+/* ============ CONTROL PANEL ============ */
+.control-panel {
+    background: #10121c; padding: 18px 22px;
+    border-top: 1px solid var(--line);
+    display: flex; gap: 18px; min-height: 158px;
+}
+.bet-input-block {
+    flex: 1; max-width: 320px; background: var(--panel); padding: 14px;
+    border-radius: 12px; border: 1px solid var(--line);
+}
+.input-row {
+    display: flex; align-items: center; background: rgba(0,0,0,0.3);
+    border-radius: 8px; padding: 4px; margin-bottom: 10px;
+    border: 1px solid transparent; transition: border-color 0.2s;
+}
+.input-row.error { border-color: var(--red); animation: inputShake 0.3s; }
+@keyframes inputShake { 25% { transform: translateX(-4px); } 75% { transform: translateX(4px); } }
+.input-row label { padding-left: 10px; font-size: 10px; text-transform: uppercase; color: var(--muted); font-weight: 800; letter-spacing: 1px; }
+.input-row input {
+    flex: 1; background: transparent; border: none; color: #fff;
+    font-size: 19px; font-weight: 800; text-align: right; padding: 6px 10px 6px 0; outline: none;
+    font-variant-numeric: tabular-nums;
+}
+input[type=number]::-webkit-inner-spin-button { display: none; }
+.quick-bet-chips { display: grid; grid-template-columns: repeat(6, 1fr); gap: 5px; }
+.chip-btn {
+    background: rgba(255,255,255,0.05); border: none; color: #fff;
+    padding: 8px 0; font-size: 11px; font-weight: 800; border-radius: 6px;
+    transition: background 0.15s;
+}
+.chip-btn:hover { background: rgba(255,255,255,0.12); }
+.chip-btn.gold { color: var(--gold); }
+.edge-note { margin-top: 9px; font-size: 10px; color: var(--muted); text-align: center; }
+
+.action-block { flex: 1.4; display: flex; gap: 12px; }
+
+.team-select-btn {
+    flex: 1; border: none; border-radius: 12px; color: #fff;
+    font-size: 16px; font-weight: 900; text-transform: uppercase;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.35);
+    transition: transform 0.15s, filter 0.15s;
+    display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 5px;
+}
+.team-select-btn span { font-size: 10px; font-weight: 600; opacity: 0.75; letter-spacing: 0.5px; }
+.team-select-btn:hover:not(:disabled) { transform: translateY(-2px); filter: brightness(1.12); }
+.btn-red-join { background: linear-gradient(160deg, #ff4775, var(--red)); }
+.btn-blue-join { background: linear-gradient(160deg, #4797ff, var(--blue)); }
+
+/* Position card (your live stake) */
+.position-card {
+    flex: 1; background: var(--panel); border-radius: 12px; border: 1px solid var(--line);
+    padding: 12px 16px; display: none; flex-direction: column; justify-content: center; gap: 5px;
+}
+.position-card .pc-head { display: flex; align-items: center; gap: 8px; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); font-weight: 800; }
+.team-tag { padding: 2px 10px; border-radius: 20px; color: #fff; font-size: 10px; font-weight: 900; }
+.team-tag.red { background: var(--red); }
+.team-tag.blue { background: var(--blue); }
+.pc-row { display: flex; justify-content: space-between; font-size: 13px; }
+.pc-row span { color: var(--muted); }
+.pc-row strong { font-variant-numeric: tabular-nums; }
+#pos-profit.up { color: var(--green); }
+#pos-profit.down { color: var(--red); }
+
+.btn-boost {
+    display: none; flex: 0.9;
+    background: linear-gradient(135deg, #1e2235, #2c324d);
+    color: var(--gold); border: 2px solid var(--gold); border-radius: 12px;
+    font-size: 14px; font-weight: 800; text-transform: uppercase;
+    flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+}
+.btn-boost span { font-size: 10px; font-weight: 600; opacity: 0.8; text-transform: none; }
+.btn-boost:active:not(:disabled) { transform: scale(0.97); }
+
+.btn-cashout {
+    display: none; flex: 1.3;
+    background: linear-gradient(160deg, #00e676, var(--green));
+    color: #fff; border: none; border-radius: 12px;
+    font-size: 17px; font-weight: 900; text-transform: uppercase;
+    box-shadow: 0 0 25px rgba(0,200,83,0.4);
+    animation: pulseGreen 1.5s infinite;
+    flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+}
+.btn-cashout small { font-size: 13px; font-weight: 700; opacity: 0.95; font-variant-numeric: tabular-nums; }
+.btn-cashout.locked {
+    background: #2a2d3f; box-shadow: none; animation: none; color: #6a6f85;
+}
+.btn-cashout.done { background: #42455a; box-shadow: none; animation: none; }
+@keyframes pulseGreen {
+    0% { box-shadow: 0 0 0 0 rgba(0,200,83,0.6); }
+    70% { box-shadow: 0 0 0 14px rgba(0,200,83,0); }
+    100% { box-shadow: 0 0 0 0 rgba(0,200,83,0); }
+}
+
+.spectate-note {
+    display: none; flex: 1; align-items: center; justify-content: center;
+    background: var(--panel); border-radius: 12px; border: 1px dashed var(--line);
+    color: var(--muted); font-size: 13px; text-align: center; padding: 10px; line-height: 1.6;
+}
+
+/* ============ SIDEBAR ============ */
+.sidebar-tabs { display: flex; border-bottom: 1px solid var(--line); }
+.sidebar-tabs button {
+    flex: 1; background: transparent; border: none; color: var(--muted);
+    padding: 13px 0; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px;
+    border-bottom: 2px solid transparent;
+}
+.sidebar-tabs button.active { color: var(--text); border-bottom-color: var(--gold); }
+
+.feed-panel { flex: 1; overflow-y: auto; padding: 14px; display: none; flex-direction: column; gap: 9px; font-size: 13px; }
+.feed-panel.active { display: flex; }
+.feed-panel::-webkit-scrollbar { width: 5px; }
+.feed-panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.12); border-radius: 3px; }
+
+.chat-msg { line-height: 1.45; animation: fadeIn 0.2s ease-out; word-break: break-word; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+.chat-msg .user { font-weight: 800; margin-right: 5px; }
+.chat-msg.red-user .user { color: var(--red); }
+.chat-msg.blue-user .user { color: var(--blue); }
+.chat-msg.you-user .user { color: var(--gold); }
+.chat-msg.sys-msg { background: rgba(255,184,0,0.08); padding: 7px 10px; border-radius: 6px; border-left: 3px solid var(--gold); }
+.chat-msg.sys-msg .msg-body { color: var(--gold); font-weight: 700; font-size: 12px; }
+
+.bet-entry {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(0,0,0,0.18); padding: 7px 10px; border-radius: 7px;
+    animation: fadeIn 0.2s ease-out; font-size: 12px;
+}
+.bet-entry .dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.bet-entry .dot.red { background: var(--red); }
+.bet-entry .dot.blue { background: var(--blue); }
+.bet-entry .who { font-weight: 700; }
+.bet-entry .amt { margin-left: auto; font-weight: 900; font-variant-numeric: tabular-nums; }
+.bet-entry.whale-bet { background: rgba(255,184,0,0.12); border: 1px solid rgba(255,184,0,0.35); }
+.bet-entry.whale-bet .who, .bet-entry.whale-bet .amt { color: var(--gold); }
+.bet-entry.mine { border: 1px solid rgba(255,255,255,0.2); }
+
+.chat-input-area { padding: 12px; border-top: 1px solid var(--line); display: flex; gap: 8px; }
+.chat-input-area input {
+    flex: 1; background: rgba(0,0,0,0.3); border: 1px solid var(--line);
+    border-radius: 6px; padding: 9px 12px; color: #fff; font-size: 13px; outline: none;
+}
+.chat-input-area input:focus { border-color: rgba(255,184,0,0.4); }
+.chat-input-area button { background: #25293d; border: none; color: #fff; padding: 0 16px; border-radius: 6px; font-weight: 800; }
+
+/* ============ RESULT OVERLAY ============ */
+.result-overlay {
+    position: absolute; inset: 0; z-index: 200;
+    background: rgba(5,6,10,0.82); backdrop-filter: blur(6px);
+    display: none; align-items: center; justify-content: center;
+}
+.result-overlay.show { display: flex; }
+.result-card {
+    text-align: center; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 20px; padding: 38px 60px; box-shadow: 0 30px 80px rgba(0,0,0,0.7);
+    animation: cardIn 0.45s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    max-width: 90%;
+}
+@keyframes cardIn { from { transform: scale(0.7) translateY(30px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+#ov-title { font-size: 34px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; }
+#ov-title.red { color: var(--red); text-shadow: 0 0 40px rgba(255,42,95,0.5); }
+#ov-title.blue { color: var(--blue); text-shadow: 0 0 40px rgba(42,134,255,0.5); }
+#ov-sub { color: var(--muted); font-size: 13px; margin-top: 6px; }
+#ov-outcome { margin-top: 22px; font-size: 20px; font-weight: 800; line-height: 1.5; }
+#ov-outcome .win-amt { color: var(--green); font-size: 30px; display: block; }
+#ov-outcome .lose-amt { color: var(--red); font-size: 30px; display: block; }
+#ov-outcome .neutral { color: var(--muted); font-size: 14px; font-weight: 600; }
+#ov-next { margin-top: 24px; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.5px; }
+#ov-next strong { color: var(--gold); font-size: 15px; }
+
+/* confetti */
+#confetti-layer { position: absolute; inset: 0; pointer-events: none; z-index: 300; overflow: hidden; }
+.confetto { position: absolute; top: -20px; width: 9px; height: 14px; animation: confFall linear forwards; }
+@keyframes confFall {
+    to { transform: translateY(110vh) rotate(720deg); opacity: 0.7; }
+}
+</style>
+</head>
+<body>
+
+<!-- ============ HEADER ============ -->
+<header>
+    <div class="logo-area">
+        <h1>🐋 Whale Wars</h1>
+        <div class="round-badge">Round <strong id="round-num">1</strong></div>
+        <div class="history-chips" id="history-chips"><span class="h-label">Last:</span></div>
+    </div>
+    <div class="stats-bar">
+        <div class="stat-item"><span>Online:</span> <strong id="online-count">14,842</strong></div>
+        <div class="stat-item"><span>Balance:</span> <strong id="user-balance">$1,000.00</strong></div>
+        <button class="refill-btn" id="refill-btn" style="display:none;" onclick="refillDemo()">+ Demo Refill</button>
+        <button class="icon-btn" id="sound-btn" onclick="toggleSound()" title="Toggle sound">🔊</button>
+    </div>
+</header>
+
+<!-- ============ MAIN ============ -->
+<div class="main-container">
+
+    <div class="game-screen">
+        <div class="arena-zone" id="arena">
+            <div class="arena-bg-glow">
+                <div class="red-glow" id="red-lens"></div>
+                <div class="blue-glow" id="blue-lens"></div>
+            </div>
+            <div class="center-line"></div>
+
+            <div class="whale-banner" id="whale-banner">🐋 Whale Alert</div>
+            <div id="floaters"></div>
+
+            <div class="timer-container">
+                <div class="timer-wrap">
+                    <svg width="92" height="92" viewBox="0 0 92 92">
+                        <circle class="timer-ring-bg" cx="46" cy="46" r="40"></circle>
+                        <circle class="timer-ring-fg" id="timer-ring" cx="46" cy="46" r="40"
+                                stroke-dasharray="251.33" stroke-dashoffset="0"></circle>
+                    </svg>
+                    <div id="timer-text">10</div>
+                </div>
+                <div id="timer-phase">Accepting Bets</div>
+            </div>
+
+            <div class="hud-display">
+                <div class="team-hud red-hud" id="red-hud">
+                    <div class="hud-title">Team Red</div>
+                    <div class="hud-mult" id="red-mult">1.00x</div>
+                    <div class="hud-pool"><span>Pool</span> <b id="red-pool">$0</b></div>
+                    <div class="hud-bettors" id="red-bettors">0 fighters</div>
+                </div>
+                <div class="team-hud blue-hud" id="blue-hud">
+                    <div class="hud-title">Team Blue</div>
+                    <div class="hud-mult" id="blue-mult">1.00x</div>
+                    <div class="hud-pool"><span>Pool</span> <b id="blue-pool">$0</b></div>
+                    <div class="hud-bettors" id="blue-bettors">0 fighters</div>
+                </div>
+            </div>
+
+            <!-- Rope -->
+            <div class="rope-assembly">
+                <div class="zone-label red-z">◀ Red Domination</div>
+                <div class="zone-label blue-z">Blue Domination ▶</div>
+                <div class="rope-track">
+                    <div class="rope-ticks" id="rope-ticks"></div>
+                    <div class="rope-line"></div>
+                    <div class="rope-marker" id="rope-marker" style="left: 50%;"></div>
+                    <!-- pullers injected by JS -->
+                </div>
+            </div>
+
+            <!-- Result overlay -->
+            <div class="result-overlay" id="result-overlay">
+                <div class="result-card">
+                    <div id="ov-title">Team Red Wins</div>
+                    <div id="ov-sub">Final multiplier locked</div>
+                    <div id="ov-outcome"></div>
+                    <div id="ov-next">Next round in <strong id="ov-count">6</strong>s</div>
+                </div>
+            </div>
+            <div id="confetti-layer"></div>
+        </div>
+
+        <!-- ============ CONTROLS ============ -->
+        <div class="control-panel">
+            <div class="bet-input-block">
+                <div class="input-row" id="bet-input-row">
+                    <label for="bet-amount">Stake $</label>
+                    <input type="number" id="bet-amount" value="10" min="1" step="1">
+                </div>
+                <div class="quick-bet-chips">
+                    <button class="chip-btn" onclick="setBet(5)">$5</button>
+                    <button class="chip-btn" onclick="setBet(25)">$25</button>
+                    <button class="chip-btn" onclick="setBet(100)">$100</button>
+                    <button class="chip-btn gold" onclick="setBet(500)">$500</button>
+                    <button class="chip-btn" onclick="mulBet(0.5)">½</button>
+                    <button class="chip-btn" onclick="mulBet(2)">2×</button>
+                </div>
+                <div class="edge-note">House edge 3.5% applied on payouts · $500+ triggers Whale Alert</div>
+            </div>
+
+            <div class="action-block">
+                <button class="team-select-btn btn-red-join" id="join-red" onclick="joinTeam('red')">
+                    Join Red <span>Bet Red drags the rope</span>
+                </button>
+                <button class="team-select-btn btn-blue-join" id="join-blue" onclick="joinTeam('blue')">
+                    Join Blue <span>Bet Blue drags the rope</span>
+                </button>
+
+                <div class="position-card" id="position-card">
+                    <div class="pc-head">Your Position <span class="team-tag" id="pos-team">RED</span></div>
+                    <div class="pc-row"><span>Total stake</span><strong id="pos-stake">$0</strong></div>
+                    <div class="pc-row"><span>Live value</span><strong id="pos-value">$0.00</strong></div>
+                    <div class="pc-row"><span>P/L</span><strong id="pos-profit">$0.00</strong></div>
+                </div>
+
+                <button class="btn-boost" id="boost-btn" onclick="injectBoost()">
+                    🚀 Boost <span id="boost-label">+$10 to your team</span>
+                </button>
+                <button class="btn-cashout" id="cashout-btn" onclick="triggerCashout()">
+                    Cash Out <small id="cashout-val">$0.00</small>
+                </button>
+
+                <div class="spectate-note" id="spectate-note">
+                    👀 Spectating — you missed the betting window.<br>Next round opens shortly.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ SIDEBAR ============ -->
+    <div class="social-sidebar">
+        <div class="sidebar-tabs">
+            <button id="tab-chat" class="active" onclick="switchTab('chat')">💬 War Room</button>
+            <button id="tab-bets" onclick="switchTab('bets')">📡 Live Bets</button>
+        </div>
+        <div class="feed-panel active" id="chat-box"></div>
+        <div class="feed-panel" id="bets-box"></div>
+        <div class="chat-input-area">
+            <input type="text" id="chat-input" placeholder="Trash talk the opposition..." maxlength="140">
+            <button onclick="sendChatMessage()">Send</button>
+        </div>
+    </div>
+</div>
+
+<script>
+'use strict';
+
+/* ================= CONFIG ================= */
+const CFG = {
+    BET_SECS: 10,          // lobby / betting phase
+    LIVE_SECS: 35,         // live battle phase (45s loop total per spec)
+    SETTLE_SECS: 6,        // result overlay before reset
+    TICK_MS: 100,          // logic tick
+    HOUSE_EDGE: 0.035,     // 3.5% skim on payouts
+    WHALE_MIN: 500,        // whale alert threshold
+    ROPE_MIN: 4, ROPE_MAX: 96,
+};
+
+/* ================= STATE ================= */
+let S = null;              // round state
+let balance = 1000.00;
+let roundNum = 1;
+let history = [];
+let soundOn = true;
+let tickHandle = null;
+let onlineCount = 14842;
+
+const player = { team: null, stake: 0, out: false, outMult: 0, banked: 0 };
+
+function freshRound() {
+    return {
+        phase: 'betting',            // betting | live | settled
+        tLeft: CFG.BET_SECS,
+        red: 0, blue: 0,             // pools ($)
+        redBettors: 0, blueBettors: 0,
+        pos: 50, vel: 0,             // rope physics
+        rMult: 1.00, bMult: 1.00,
+        winner: null,
+    };
+}
+
+/* ================= DOM REFS ================= */
+const $ = id => document.getElementById(id);
+const el = {
+    balance: $('user-balance'), online: $('online-count'), refill: $('refill-btn'),
+    roundNum: $('round-num'), history: $('history-chips'),
+    arena: $('arena'), redLens: $('red-lens'), blueLens: $('blue-lens'),
+    timerText: $('timer-text'), timerPhase: $('timer-phase'), timerRing: $('timer-ring'),
+    whaleBanner: $('whale-banner'), floaters: $('floaters'),
+    redHud: $('red-hud'), blueHud: $('blue-hud'),
+    redMult: $('red-mult'), blueMult: $('blue-mult'),
+    redPool: $('red-pool'), bluePool: $('blue-pool'),
+    redBettors: $('red-bettors'), blueBettors: $('blue-bettors'),
+    marker: $('rope-marker'), ropeTrack: document.querySelector('.rope-track'),
+    betInput: $('bet-amount'), betRow: $('bet-input-row'),
+    joinRed: $('join-red'), joinBlue: $('join-blue'),
+    posCard: $('position-card'), posTeam: $('pos-team'), posStake: $('pos-stake'),
+    posValue: $('pos-value'), posProfit: $('pos-profit'),
+    boostBtn: $('boost-btn'), boostLabel: $('boost-label'),
+    cashBtn: $('cashout-btn'), cashVal: $('cashout-val'),
+    spectate: $('spectate-note'),
+    overlay: $('result-overlay'), ovTitle: $('ov-title'), ovSub: $('ov-sub'),
+    ovOutcome: $('ov-outcome'), ovCount: $('ov-count'),
+    chatBox: $('chat-box'), betsBox: $('bets-box'), chatInput: $('chat-input'),
+    confetti: $('confetti-layer'), soundBtn: $('sound-btn'),
+};
+
+/* ================= UTILS ================= */
+const fmt$ = n => '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt$0 = n => '$' + Math.floor(n).toLocaleString('en-US');
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const rand = (lo, hi) => lo + Math.random() * (hi - lo);
+const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+
+const BOT_NAMES = ['CryptoKing','Volt_Sniper','Vegas_VIP','Matrx_0','Shredder','GamerX','Alpha_Red','MoonShot','DeFiDegen','BluePhantom','RedBaron','TiltMaster','Kraken88','NeonWolf','StackDaddy','ZeroFear','GoldRush_7','PixelShark'];
+
+/* ================= AUDIO (WebAudio bleeps) ================= */
+let AC = null;
+function audioCtx() {
+    if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {} }
+    return AC;
+}
+function blip(freq, dur, type = 'sine', gain = 0.08, when = 0) {
+    if (!soundOn) return;
+    const ctx = audioCtx(); if (!ctx) return;
+    const t = ctx.currentTime + when;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(t); o.stop(t + dur);
+}
+const snd = {
+    tick:    () => blip(1250, 0.06, 'square', 0.04),
+    join:    () => { blip(520, 0.1); blip(780, 0.12, 'sine', 0.08, 0.08); },
+    boost:   () => { blip(300, 0.15, 'sawtooth', 0.06); blip(600, 0.1, 'sine', 0.06, 0.05); },
+    whale:   () => { blip(110, 0.5, 'sawtooth', 0.1); blip(165, 0.4, 'sawtooth', 0.07, 0.1); },
+    cashout: () => { blip(660, 0.12); blip(880, 0.14, 'sine', 0.09, 0.1); blip(1320, 0.2, 'sine', 0.08, 0.2); },
+    win:     () => [523, 659, 784, 1047].forEach((f, i) => blip(f, 0.25, 'sine', 0.09, i * 0.12)),
+    lose:    () => [400, 300, 200].forEach((f, i) => blip(f, 0.3, 'sawtooth', 0.05, i * 0.15)),
+};
+function toggleSound() {
+    soundOn = !soundOn;
+    el.soundBtn.textContent = soundOn ? '🔊' : '🔇';
+}
+// unlock audio on first interaction
+document.addEventListener('pointerdown', () => { const c = audioCtx(); if (c && c.state === 'suspended') c.resume(); }, { once: true });
+
+/* ================= ROPE PULLER ORBS ================= */
+const PULLERS = [];
+(function buildPullers() {
+    const sizes = [26, 21, 17, 14];
+    const offs = [4.5, 8, 11, 13.7]; // % from marker
+    sizes.forEach((s, i) => {
+        for (const side of ['red', 'blue']) {
+            const d = document.createElement('div');
+            d.className = `puller ${side}-p`;
+            d.style.width = s + 'px'; d.style.height = s + 'px';
+            d.style.marginTop = -(s / 2) + 'px';
+            d.style.animationDelay = (i * 0.13) + 's';
+            el.ropeTrack.appendChild(d);
+            PULLERS.push({ node: d, side, off: offs[i] });
+        }
+    });
+    // graduation ticks
+    const ticks = $('rope-ticks');
+    for (let p = 10; p <= 90; p += 10) {
+        const i = document.createElement('i');
+        if (p === 50) i.className = 'mid';
+        i.style.left = p + '%';
+        ticks.appendChild(i);
+    }
+})();
+
+/* ================= RENDER ================= */
+function renderBalance() {
+    el.balance.textContent = fmt$(balance);
+    el.refill.style.display = balance < 5 ? '' : 'none';
+}
+
+function renderPools() {
+    el.redPool.textContent = fmt$0(S.red);
+    el.bluePool.textContent = fmt$0(S.blue);
+    el.redBettors.textContent = S.redBettors + ' fighters';
+    el.blueBettors.textContent = S.blueBettors + ' fighters';
+}
+
+function renderRope() {
+    el.marker.style.left = S.pos + '%';
+    for (const p of PULLERS) {
+        p.node.style.left = (p.side === 'red' ? S.pos - p.off : S.pos + p.off) + '%';
+    }
+    const redInt = (100 - S.pos) / 100, blueInt = S.pos / 100;
+    el.redLens.style.background = `rgba(255,42,95,${(redInt * 0.16).toFixed(3)})`;
+    el.blueLens.style.background = `rgba(42,134,255,${(blueInt * 0.16).toFixed(3)})`;
+}
+
+function renderMults() {
+    el.redMult.textContent = S.rMult.toFixed(2) + 'x';
+    el.blueMult.textContent = S.bMult.toFixed(2) + 'x';
+    el.redMult.classList.toggle('dead', S.rMult <= 0);
+    el.blueMult.classList.toggle('dead', S.bMult <= 0);
+    el.redHud.classList.toggle('winning', S.phase === 'live' && S.pos < 50);
+    el.blueHud.classList.toggle('winning', S.phase === 'live' && S.pos > 50);
+}
+
+function renderTimer() {
+    const total = S.phase === 'betting' ? CFG.BET_SECS : CFG.LIVE_SECS;
+    const secs = Math.max(0, Math.ceil(S.tLeft));
+    el.timerText.textContent = secs;
+    const C = 251.33;
+    el.timerRing.style.strokeDashoffset = (C * (1 - clamp(S.tLeft / total, 0, 1))).toFixed(1);
+    el.timerRing.style.stroke = S.phase === 'live'
+        ? (S.tLeft < 8 ? 'var(--red)' : 'var(--gold)')
+        : 'var(--gold)';
+}
+
+function playerMult() { return player.team === 'red' ? S.rMult : S.bMult; }
+function netValue(stake, mult) { return stake * mult * (1 - CFG.HOUSE_EDGE); }
+
+function renderPosition() {
+    if (!player.team) return;
+    const m = playerMult();
+    const val = player.out ? player.banked : netValue(player.stake, m);
+    const profit = val - player.stake;
+    el.posStake.textContent = fmt$(player.stake);
+    el.posValue.textContent = fmt$(val) + (player.out ? ' (banked)' : '');
+    el.posProfit.textContent = (profit >= 0 ? '+' : '') + fmt$(profit);
+    el.posProfit.className = profit >= 0 ? 'up' : 'down';
+
+    if (!player.out && S.phase === 'live') {
+        if (m > 0) {
+            el.cashBtn.classList.remove('locked');
+            el.cashBtn.disabled = false;
+            el.cashVal.textContent = fmt$(netValue(player.stake, m));
+        } else {
+            el.cashBtn.classList.add('locked');
+            el.cashBtn.disabled = true;
+            el.cashVal.textContent = '0.00x — boost to fight back!';
+        }
+    }
+}
+
+/* Action area visibility per phase/player state */
+function renderActions() {
+    const betting = S.phase === 'betting';
+    const live = S.phase === 'live';
+    const joined = !!player.team;
+
+    el.joinRed.style.display = betting && !joined ? 'flex' : 'none';
+    el.joinBlue.style.display = betting && !joined ? 'flex' : 'none';
+    el.posCard.style.display = joined ? 'flex' : 'none';
+    el.boostBtn.style.display = live && joined && !player.out ? 'flex' : 'none';
+    el.cashBtn.style.display = live && joined ? 'flex' : 'none';
+    el.spectate.style.display = live && !joined ? 'flex' : 'none';
+
+    if (joined) {
+        el.posTeam.textContent = player.team.toUpperCase();
+        el.posTeam.className = 'team-tag ' + player.team;
+    }
+    if (player.out) {
+        el.cashBtn.classList.add('done');
+        el.cashBtn.disabled = true;
+        el.cashBtn.firstChild.textContent = 'Cashed Out ';
+        el.cashVal.textContent = `banked ${fmt$(player.banked)} @ ${player.outMult.toFixed(2)}x`;
+    } else {
+        el.cashBtn.classList.remove('done');
+        el.cashBtn.firstChild.textContent = 'Cash Out ';
+    }
+}
+
+/* ================= FLOATERS & EFFECTS ================= */
+function spawnFloater(team, amt, isWhale) {
+    if (el.floaters.childElementCount > 24) el.floaters.firstChild.remove();
+    const f = document.createElement('div');
+    f.className = 'floater' + (isWhale ? ' big' : '');
+    f.textContent = (isWhale ? '🐋 ' : '') + '+' + fmt$0(amt);
+    f.style.color = team === 'red' ? 'var(--red)' : 'var(--blue)';
+    f.style.left = (team === 'red' ? rand(8, 38) : rand(62, 92)) + '%';
+    el.floaters.appendChild(f);
+    setTimeout(() => f.remove(), 2500);
+}
+
+let whaleTimeout = null;
+function whaleAlert(msg) {
+    el.whaleBanner.textContent = msg;
+    el.whaleBanner.classList.add('active');
+    el.arena.classList.remove('shake');
+    void el.arena.offsetWidth; // restart animation
+    el.arena.classList.add('shake');
+    snd.whale();
+    clearTimeout(whaleTimeout);
+    whaleTimeout = setTimeout(() => el.whaleBanner.classList.remove('active'), 3000);
+}
+
+function confettiBurst() {
+    const colors = ['#ffb800', '#00c853', '#ff2a5f', '#2a86ff', '#ffffff'];
+    for (let i = 0; i < 70; i++) {
+        const c = document.createElement('div');
+        c.className = 'confetto';
+        c.style.left = rand(0, 100) + '%';
+        c.style.background = pick(colors);
+        c.style.animationDuration = rand(1.6, 3.2) + 's';
+        c.style.animationDelay = rand(0, 0.5) + 's';
+        c.style.transform = `rotate(${rand(0, 360)}deg)`;
+        el.confetti.appendChild(c);
+    }
+    setTimeout(() => { el.confetti.innerHTML = ''; }, 4200);
+}
+
+/* ================= FEEDS ================= */
+function trimFeed(box) { while (box.childElementCount > 45) box.firstChild.remove(); }
+
+function addChat(kind, user, text) {
+    const d = document.createElement('div');
+    d.className = kind === 'system' ? 'chat-msg sys-msg' : `chat-msg ${kind}-user`;
+    const u = document.createElement('span'); u.className = 'user';
+    if (kind !== 'system') u.textContent = user + ':';
+    const b = document.createElement('span'); b.className = 'msg-body'; b.textContent = text;
+    d.appendChild(u); d.appendChild(b);
+    el.chatBox.appendChild(d);
+    trimFeed(el.chatBox);
+    el.chatBox.scrollTop = el.chatBox.scrollHeight;
+}
+
+function addBetEntry(team, who, amt, opts = {}) {
+    const d = document.createElement('div');
+    d.className = 'bet-entry' + (amt >= CFG.WHALE_MIN ? ' whale-bet' : '') + (opts.mine ? ' mine' : '');
+    const dot = document.createElement('span'); dot.className = 'dot ' + team;
+    const w = document.createElement('span'); w.className = 'who';
+    w.textContent = (amt >= CFG.WHALE_MIN ? '🐋 ' : '') + who;
+    const verb = document.createElement('span');
+    verb.textContent = opts.boost ? 'boosted' : 'bet';
+    verb.style.color = 'var(--muted)';
+    const a = document.createElement('span'); a.className = 'amt'; a.textContent = fmt$0(amt);
+    d.append(dot, w, verb, a);
+    el.betsBox.appendChild(d);
+    trimFeed(el.betsBox);
+    el.betsBox.scrollTop = el.betsBox.scrollHeight;
+}
+
+function switchTab(tab) {
+    $('tab-chat').classList.toggle('active', tab === 'chat');
+    $('tab-bets').classList.toggle('active', tab === 'bets');
+    el.chatBox.classList.toggle('active', tab === 'chat');
+    el.betsBox.classList.toggle('active', tab === 'bets');
+}
+
+/* ================= BET INPUT ================= */
+function getBetAmount() {
+    const v = Math.floor(parseFloat(el.betInput.value));
+    return isNaN(v) ? 0 : v;
+}
+function setBet(a) { el.betInput.value = a; }
+function mulBet(f) { el.betInput.value = Math.max(1, Math.floor(getBetAmount() * f)); }
+function flagBetError() {
+    el.betRow.classList.remove('error');
+    void el.betRow.offsetWidth;
+    el.betRow.classList.add('error');
+}
+
+/* ================= PLAYER ACTIONS ================= */
+function registerStake(team, amt, isBoost) {
+    balance -= amt;
+    player.stake += amt;
+    if (team === 'red') S.red += amt; else S.blue += amt;
+    renderBalance(); renderPools();
+    addBetEntry(team, 'You', amt, { mine: true, boost: isBoost });
+    spawnFloater(team, amt, amt >= CFG.WHALE_MIN);
+    if (amt >= CFG.WHALE_MIN) {
+        applyImpulse(team, amt);
+        whaleAlert(`🐋 WHALE ALERT: YOU dropped ${fmt$0(amt)} on ${team.toUpperCase()}!`);
+    }
+}
+
+function joinTeam(team) {
+    if (S.phase !== 'betting' || player.team) return;
+    const amt = getBetAmount();
+    if (amt < 1 || amt > balance) { flagBetError(); return; }
+
+    player.team = team; player.out = false; player.stake = 0;
+    if (team === 'red') S.redBettors++; else S.blueBettors++;
+    registerStake(team, amt, false);
+    snd.join();
+    addChat(team, 'You', `Locked in ${fmt$0(amt)} on Team ${team.toUpperCase()}! 🔒`);
+    el.boostLabel.textContent = `stake more on ${team.toUpperCase()}`;
+    renderActions(); renderPosition();
+}
+
+function injectBoost() {
+    if (S.phase !== 'live' || !player.team || player.out) return;
+    const amt = getBetAmount();
+    if (amt < 1 || amt > balance) { flagBetError(); return; }
+
+    registerStake(player.team, amt, true);
+    applyImpulse(player.team, Math.max(amt, 120)); // boosts always kick, whales kick harder
+    snd.boost();
+    addChat(player.team, 'You', `🚀 Mid-round boost: +${fmt$0(amt)} into the ${player.team.toUpperCase()} pool!`);
+    renderPosition();
+}
+
+function triggerCashout() {
+    if (S.phase !== 'live' || !player.team || player.out) return;
+    const m = playerMult();
+    if (m <= 0) return;
+
+    player.out = true;
+    player.outMult = m;
+    player.banked = netValue(player.stake, m);
+    balance += player.banked;
+    snd.cashout();
+    renderBalance(); renderActions(); renderPosition();
+    addChat('system', 'System', `✅ Cashed out at ${m.toFixed(2)}x — ${fmt$(player.banked)} secured.`);
+}
+
+function refillDemo() {
+    balance += 1000;
+    renderBalance();
+    addChat('system', 'System', '💳 Demo balance refilled (+$1,000).');
+}
+
+/* ================= ROPE PHYSICS ================= */
+/* Rope target derives from live pool ratio — the core hook of the game. */
+function ropeTarget() {
+    const total = S.red + S.blue;
+    if (total <= 0) return 50;
+    const skew = (S.blue - S.red) / total;         // -1 .. +1
+    const range = S.phase === 'live' ? 42 : 10;    // small preview lean during betting
+    return 50 + clamp(skew * range * 1.4, -range, range);
+}
+
+function applyImpulse(team, amt) {
+    const dir = team === 'red' ? -1 : 1;
+    S.vel += dir * clamp(1.2 + amt / 800, 0, 6.5);
+}
+
+function stepRope() {
+    const target = ropeTarget();
+    S.vel += (target - S.pos) * 0.045;             // spring toward pool ratio
+    S.vel += (Math.random() - 0.5) * 0.35;         // crowd chaos noise
+    S.vel *= 0.88;                                 // damping
+    S.pos += S.vel;
+    if (S.pos < CFG.ROPE_MIN) { S.pos = CFG.ROPE_MIN; S.vel *= -0.3; }
+    if (S.pos > CFG.ROPE_MAX) { S.pos = CFG.ROPE_MAX; S.vel *= -0.3; }
+}
+
+/* Winning side multiplier compounds with dominance; losing side collapses to 0. */
+function stepMultipliers() {
+    const dom = Math.abs(S.pos - 50) / 46;         // 0..1 dominance
+    const grow = 1 + dom * 0.0095;                 // per 100ms tick
+    if (S.pos < 50) {
+        S.rMult = Math.max(S.rMult, 1.0) * grow;
+        S.bMult = S.bMult > 0.05 ? S.bMult * 0.88 : 0;
+    } else if (S.pos > 50) {
+        S.bMult = Math.max(S.bMult, 1.0) * grow;
+        S.rMult = S.rMult > 0.05 ? S.rMult * 0.88 : 0;
+    }
+}
+
+/* ================= BOT ECOSYSTEM ================= */
+function botAmount() {
+    const r = Math.random();
+    if (r < 0.55) return Math.floor(rand(5, 60));
+    if (r < 0.82) return Math.floor(rand(60, 250));
+    if (r < 0.95) return Math.floor(rand(250, CFG.WHALE_MIN));
+    return Math.floor(rand(CFG.WHALE_MIN, 4500));  // whale
+}
+
+function botBet(isLive) {
+    const amt = botAmount();
+    // comeback drama: during live phase, money slightly favors the losing side
+    let team;
+    if (isLive && S.pos !== 50 && Math.random() < 0.58) {
+        team = S.pos < 50 ? 'blue' : 'red';
+    } else {
+        team = Math.random() < 0.5 ? 'red' : 'blue';
+    }
+    const who = pick(BOT_NAMES) + '_' + Math.floor(rand(10, 99));
+
+    if (team === 'red') { S.red += amt; S.redBettors++; } else { S.blue += amt; S.blueBettors++; }
+    addBetEntry(team, who, amt, { boost: isLive });
+    spawnFloater(team, amt, amt >= CFG.WHALE_MIN);
+
+    if (amt >= CFG.WHALE_MIN) {
+        applyImpulse(team, amt);
+        whaleAlert(`🐋 WHALE ALERT: ${who} dropped ${fmt$0(amt)} on ${team.toUpperCase()}!`);
+    }
+    renderPools();
+}
+
+const CHAT_POOL = {
+    betting: [
+        ['red', 'Red army assemble, easy money this round'],
+        ['blue', 'Blue pool already stacking, join the winners'],
+        ['red', 'Pumping my whole balance into RED'],
+        ['blue', 'Red bettors donating again lol'],
+    ],
+    redWinning: [
+        ['red', 'RED IS UNSTOPPABLE 🔥'],
+        ['blue', 'Blue whales where are you?? SAVE US'],
+        ['red', 'Cashing at 5x, printing money'],
+        ['blue', 'Boosting blue NOW, everyone push'],
+    ],
+    blueWinning: [
+        ['blue', 'BLUE WALL. Nothing gets through 🧊'],
+        ['red', 'We need a red whale ASAP'],
+        ['blue', 'Watch the multiplier climb boys'],
+        ['red', 'Everyone dump into red, we can flip this'],
+    ],
+};
+function botChat() {
+    let pool = CHAT_POOL.betting;
+    if (S.phase === 'live') pool = S.pos < 50 ? CHAT_POOL.redWinning : CHAT_POOL.blueWinning;
+    const [team, text] = pick(pool);
+    addChat(team, pick(BOT_NAMES), text);
+}
+
+/* ================= GAME LOOP ================= */
+function tick() {
+    S.tLeft -= CFG.TICK_MS / 1000;
+
+    if (S.phase === 'betting') {
+        if (Math.random() < 0.28) botBet(false);
+        if (Math.random() < 0.045) botChat();
+        stepRopePreview();
+        if (S.tLeft <= 3.05 && S.tLeft > 0 && Math.abs(S.tLeft % 1) < 0.1) snd.tick();
+        if (S.tLeft <= 0) startLive();
+    }
+    else if (S.phase === 'live') {
+        if (Math.random() < 0.10) botBet(true);
+        if (Math.random() < 0.05) botChat();
+        stepRope();
+        stepMultipliers();
+        renderMults();
+        renderPosition();
+        if (S.tLeft <= 0) return settleRound();
+    }
+
+    renderTimer();
+    renderRope();
+}
+
+function stepRopePreview() {
+    // gentle lean toward the heavier pool during betting — a tell for sharp players
+    const target = ropeTarget();
+    S.pos += (target - S.pos) * 0.06;
+}
+
+function startLive() {
+    S.phase = 'live';
+    S.tLeft = CFG.LIVE_SECS;
+    el.timerPhase.textContent = '⚔️ Live Battle';
+    el.timerPhase.classList.add('live');
+    addChat('system', 'System', `⚔️ Round ${roundNum} is LIVE — ${CFG.LIVE_SECS} seconds. Fight for the rope!`);
+    renderActions();
+}
+
+/* ================= SETTLEMENT ================= */
+function settleRound() {
+    clearInterval(tickHandle);
+    S.phase = 'settled';
+    S.winner = S.pos < 50 ? 'red' : 'blue';
+    const winMult = S.winner === 'red' ? S.rMult : S.bMult;
+
+    // history chips
+    history.push(S.winner);
+    if (history.length > 10) history.shift();
+    renderHistory();
+
+    // resolve player
+    let outcomeHTML = '';
+    if (player.team && !player.out) {
+        if (player.team === S.winner) {
+            const payout = netValue(player.stake, winMult);
+            balance += payout;
+            outcomeHTML = `You held to the end at ${winMult.toFixed(2)}x<span class="win-amt">+${fmt$(payout)}</span>`;
+            confettiBurst(); snd.win();
+            addChat('system', 'System', `🏆 Team ${S.winner.toUpperCase()} wins! Max settlement ${fmt$(payout)} paid out.`);
+        } else {
+            outcomeHTML = `Your position was liquidated<span class="lose-amt">−${fmt$(player.stake)}</span>`;
+            snd.lose();
+            addChat('system', 'System', `💀 Team ${S.winner.toUpperCase()} won. Your ${fmt$(player.stake)} stake is gone.`);
+        }
+    } else if (player.team && player.out) {
+        outcomeHTML = `Smart exit — you banked earlier at ${player.outMult.toFixed(2)}x<span class="win-amt">+${fmt$(player.banked)}</span>`;
+        if (player.team === S.winner && winMult > player.outMult) {
+            outcomeHTML += `<div class="neutral">Holding would have paid ${fmt$(netValue(player.stake, winMult))}…</div>`;
+        } else if (player.team !== S.winner) {
+            outcomeHTML += `<div class="neutral">Perfect read — your team lost after you left. 🧠</div>`;
+        }
+    } else {
+        outcomeHTML = `<span class="neutral">You spectated this round. Jump in next time.</span>`;
+    }
+
+    renderBalance();
+
+    // overlay
+    el.ovTitle.textContent = `Team ${S.winner} Wins`;
+    el.ovTitle.className = S.winner;
+    el.ovSub.textContent = `Final multiplier ${winMult.toFixed(2)}x · Pools ${fmt$0(S.red)} vs ${fmt$0(S.blue)}`;
+    el.ovOutcome.innerHTML = outcomeHTML; // trusted: built above from game numbers only
+    el.overlay.classList.add('show');
+    el.timerPhase.textContent = 'Settling Stakes';
+    el.timerPhase.classList.remove('live');
+
+    // countdown then reset
+    let n = CFG.SETTLE_SECS;
+    el.ovCount.textContent = n;
+    const cd = setInterval(() => {
+        n--;
+        el.ovCount.textContent = Math.max(0, n);
+        if (n <= 0) { clearInterval(cd); resetRound(); }
+    }, 1000);
+}
+
+function renderHistory() {
+    el.history.querySelectorAll('.h-chip').forEach(c => c.remove());
+    for (const w of history) {
+        const c = document.createElement('div');
+        c.className = 'h-chip ' + w;
+        c.textContent = w === 'red' ? 'R' : 'B';
+        el.history.appendChild(c);
+    }
+}
+
+function resetRound() {
+    roundNum++;
+    S = freshRound();
+    player.team = null; player.stake = 0; player.out = false; player.banked = 0; player.outMult = 0;
+
+    el.overlay.classList.remove('show');
+    el.roundNum.textContent = roundNum;
+    el.timerPhase.textContent = 'Accepting Bets';
+    el.cashBtn.classList.remove('done', 'locked');
+    el.cashBtn.disabled = false;
+
+    renderPools(); renderMults(); renderRope(); renderTimer(); renderActions(); renderBalance();
+    addChat('system', 'System', `Round ${roundNum} — betting open for ${CFG.BET_SECS}s. Pick your side.`);
+
+    tickHandle = setInterval(tick, CFG.TICK_MS);
+}
+
+/* ================= CHAT INPUT ================= */
+function sendChatMessage() {
+    const text = el.chatInput.value.trim();
+    if (!text) return;
+    addChat(player.team ? 'you' : 'you', 'You', text);
+    el.chatInput.value = '';
+}
+el.chatInput.addEventListener('keydown', e => { if (e.key === 'Enter') sendChatMessage(); });
+
+/* ================= MISC AMBIENT ================= */
+setInterval(() => {
+    onlineCount = Math.max(9000, onlineCount + Math.floor(rand(-140, 160)));
+    el.online.textContent = onlineCount.toLocaleString('en-US');
+}, 2200);
+
+/* ================= BOOT ================= */
+S = freshRound();
+renderBalance(); renderPools(); renderMults(); renderRope(); renderTimer(); renderActions();
+addChat('system', 'System', '🐋 Welcome to Whale Wars. Two teams, one rope, 45 seconds. Betting is open.');
+addChat('red', 'Alpha_Red', "PUMP RED GUYS! Let's break them early!");
+addChat('blue', 'CryptoKing', 'Blue squad hold the line 🧊');
+tickHandle = setInterval(tick, CFG.TICK_MS);
+</script>
+</body>
+</html>

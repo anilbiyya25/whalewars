@@ -1,0 +1,23 @@
+# Render Blueprint — https://render.com
+# One free web service running the Whale Wars server.
+services:
+  - type: web
+    name: whalewars
+    runtime: node
+    plan: free
+    region: oregon        # pick the region closest to your players
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Supabase — set the real values in the Render dashboard (sync: false = not stored in this file)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      # - key: CORS_ORIGIN
+      #   value: https://your-domain.com   # uncomment to lock CORS to your site
