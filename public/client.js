@@ -129,6 +129,9 @@ const sndHorn = () => { blip(98, 0.7, 'sawtooth', 0.12); blip(147, 0.55, 'sawtoo
 
 /* ---- scene state ---- */
 let T = 0, shake = 0, lightning = 0, prevRM = 1, prevBM = 1;
+// view scale: shrink the art on narrow screens so the two whales don't overlap.
+// 1.0 on desktop-width canvases, ~0.5 on a phone.
+let VS = 1;
 function newWhale(ph) {
     return { lean: 0, recoil: 0, sink: 0, pulse: 0, blink: 0, nextBlink: rand(1.5, 4),
              roar: 0, heavePh: ph, airborne: false, sx: -9999, sy: -9999, srad: 95 };
@@ -298,18 +301,19 @@ function drawFish(arr, team) {
     const col = team === 'red' ? '#ff5c84' : '#5ca4ff';
     const wx = teamWaterX(team), dir = team === 'red' ? -1 : 1;
     for (const f of arr) {
-        const fx = wx + dir * f.ox;
-        const fy = waterY(fx) + 44 + f.oy + Math.sin(T * 2 * f.sp + f.ph) * 5;
-        const tail = Math.sin(T * 9 * f.sp + f.ph) * f.s * 0.5;
+        const s = f.s * VS;
+        const fx = wx + dir * f.ox * VS;
+        const fy = waterY(fx) + (44 + f.oy) * VS + Math.sin(T * 2 * f.sp + f.ph) * 5;
+        const tail = Math.sin(T * 9 * f.sp + f.ph) * s * 0.5;
         cx.globalAlpha = 0.85; cx.fillStyle = col;
-        cx.beginPath(); cx.ellipse(fx, fy, f.s, f.s * 0.55, 0, 0, TAU); cx.fill();
+        cx.beginPath(); cx.ellipse(fx, fy, s, s * 0.55, 0, 0, TAU); cx.fill();
         cx.fillStyle = '#0a0e18';
-        cx.beginPath(); cx.arc(fx + dir * f.s * 0.55, fy - f.s * 0.12, Math.max(1, f.s * 0.16), 0, TAU); cx.fill();
+        cx.beginPath(); cx.arc(fx + dir * s * 0.55, fy - s * 0.12, Math.max(1, s * 0.16), 0, TAU); cx.fill();
         cx.fillStyle = col;
         cx.beginPath();
-        cx.moveTo(fx - dir * f.s, fy);
-        cx.lineTo(fx - dir * (f.s + f.s * 0.9), fy - f.s * 0.55 + tail);
-        cx.lineTo(fx - dir * (f.s + f.s * 0.9), fy + f.s * 0.55 + tail);
+        cx.moveTo(fx - dir * s, fy);
+        cx.lineTo(fx - dir * (s + s * 0.9), fy - s * 0.55 + tail);
+        cx.lineTo(fx - dir * (s + s * 0.9), fy + s * 0.55 + tail);
         cx.closePath(); cx.fill();
         cx.globalAlpha = 1;
     }
@@ -362,9 +366,9 @@ function drawRopeAndWhales() {
     cx.strokeStyle = '#c9a06a'; cx.lineWidth = 5;
     cx.shadowColor = 'rgba(0,0,0,0.6)'; cx.shadowBlur = 6;
     cx.beginPath();
-    cx.moveTo(rx + 58, ry - rBounce);
+    cx.moveTo(rx + 58 * VS, ry - rBounce);
     cx.quadraticCurveTo((rx + mx) / 2 + rand(-vib, vib), Math.max(ry, chestY) + sag + rand(-vib, vib), mx, chestY);
-    cx.quadraticCurveTo((mx + bx) / 2 + rand(-vib, vib), Math.max(by, chestY) + sag + rand(-vib, vib), bx - 58, by - bBounce);
+    cx.quadraticCurveTo((mx + bx) / 2 + rand(-vib, vib), Math.max(by, chestY) + sag + rand(-vib, vib), bx - 58 * VS, by - bBounce);
     cx.stroke();
     cx.strokeStyle = 'rgba(255,224,160,0.45)'; cx.lineWidth = 1.6; cx.stroke();
     cx.shadowBlur = 0;
@@ -397,7 +401,7 @@ function drawWhale(x, y, team, st) {
     st.blink = Math.max(0, st.blink - 0.08);
     const eyeOpen = defeated ? 1 : 1 - Math.sin(Math.min(1, st.blink) * Math.PI) * 0.92;
 
-    const s = 1 + Math.min(0.35, (team === 'red' ? SIM.red : SIM.blue) / 120000);
+    const s = VS * (1 + Math.min(0.35, (team === 'red' ? SIM.red : SIM.blue) / 120000));
     const recoilS = 1 + st.recoil * 0.12;
     const bob = Math.sin(T * 1.6 + (team === 'red' ? 0 : 2)) * 5;
     st.sx = x; st.sy = y + bob; st.srad = 92 * s;
@@ -524,7 +528,7 @@ function drawWhale(x, y, team, st) {
 
 function drawChest(x, y) {
     cx.save();
-    cx.translate(x, y); cx.rotate(Math.sin(T * 2.4) * 0.08);
+    cx.translate(x, y); cx.scale(VS, VS); cx.rotate(Math.sin(T * 2.4) * 0.08);
     cx.shadowColor = '#ffb800'; cx.shadowBlur = 26;
     cx.fillStyle = '#8a5a22'; cx.fillRect(-20, -14, 40, 26);
     cx.shadowBlur = 0;
@@ -597,6 +601,7 @@ function drawParticles(dt) {
 
 /* ---- main scene loop ---- */
 function drawScene(dt) {
+    VS = clamp(W / 760, 0.5, 1.0);   // whales/chest/fish shrink on narrow screens
     shake = Math.max(0, shake - dt * 22);
     lightning = Math.max(0, lightning - dt * 2.6);
     whaleR.recoil = Math.max(0, whaleR.recoil - dt * 2);
