@@ -670,7 +670,7 @@ socket.on('disconnect', () => el.conn.classList.add('show'));
 socket.on('hello', h => {
     CFGC = { ...CFGC, ...h };
     el.edgeNote.textContent = `House edge ${(CFGC.edge * 100).toFixed(1)}% applied on payouts · 🪙${CFGC.whaleMin.toLocaleString()}+ triggers Whale Alert`;
-    if (h.state) { ST = h.state; renderAll(); }
+    if (h.state) { ST = h.state; renderAll(); onPhaseChange(ST.phase); el.roundNum.textContent = ST.id; }
 });
 
 /* ================= SERVER STATE ================= */
@@ -909,6 +909,10 @@ function addChat(kind, user, text) {
     el.chatBox.appendChild(d);
     trimFeed(el.chatBox);
     el.chatBox.scrollTop = el.chatBox.scrollHeight;
+    // ping the mobile toggle when the sheet is closed and someone's talking
+    if (kind !== 'you' && !document.body.classList.contains('sidebar-open')) {
+        const ct = $('chat-toggle'); if (ct) ct.classList.add('unread');
+    }
 }
 
 function addBetEntry(team, who, amt, opts = {}) {
@@ -934,6 +938,12 @@ function switchTab(tab) {
     el.chatBox.classList.toggle('active', tab === 'chat');
     el.betsBox.classList.toggle('active', tab === 'bets');
     el.leadersBox.classList.toggle('active', tab === 'leaders');
+}
+
+// mobile bottom-sheet War Room toggle
+function toggleSidebar() {
+    const open = document.body.classList.toggle('sidebar-open');
+    if (open) $('chat-toggle').classList.remove('unread');
 }
 
 function renderLeaderboard(list) {
