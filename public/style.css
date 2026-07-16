@@ -119,7 +119,7 @@ header {
 
 .stats-bar { display: flex; gap: 18px; font-size: 14px; align-items: center; }
 .stat-item span { color: var(--muted); font-size: 12px; }
-.stat-item strong { color: var(--gold); font-variant-numeric: tabular-nums; }
+.stat-item strong { color: var(--gold); font-variant-numeric: tabular-nums; white-space: nowrap; }
 #online-count { color: var(--green); }
 .refill-btn {
     background: var(--panel-2); border: 1px solid var(--line); color: var(--gold);
@@ -207,7 +207,7 @@ header {
 .red-hud .hud-mult { color: var(--red); }
 .blue-hud .hud-mult { color: var(--blue); }
 .hud-mult.dead { color: #4a4f63 !important; }
-.hud-pool { font-size: 13px; margin-top: 6px; font-family: Consolas, monospace; color: var(--text); }
+.hud-pool { font-size: 13px; margin-top: 6px; font-family: Consolas, monospace; color: var(--text); white-space: nowrap; }
 .hud-pool span { color: var(--muted); }
 .hud-bettors { font-size: 10px; color: var(--muted); margin-top: 2px; }
 

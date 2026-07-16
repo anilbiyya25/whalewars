@@ -43,6 +43,14 @@ const el = {
 
 /* ================= UTILS ================= */
 const fmtC = n => '🪙' + Math.round(n).toLocaleString('en-US');
+// compact coins for tight spaces (HUD pools, large balances): 33.4K, 1.53M
+function fmtCompact(n) {
+    n = Math.round(n);
+    const a = Math.abs(n);
+    if (a >= 999500) return '🪙' + (a >= 1e7 ? Math.round(n / 1e6) : (n / 1e6).toFixed(2).replace(/\.?0+$/, '')) + 'M';
+    if (a >= 1e4) return '🪙' + (a >= 1e5 ? Math.round(n / 1e3) : (n / 1e3).toFixed(1).replace(/\.0$/, '')) + 'K';
+    return '🪙' + n.toLocaleString('en-US');
+}
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const lerp = (a, b, t) => a + (b - a) * t;
 const rand = (lo, hi) => lo + Math.random() * (hi - lo);
@@ -777,13 +785,15 @@ function renderAll() {
 }
 
 function renderBalance() {
-    el.balance.textContent = fmtC(me.balance);
+    // keep small balances exact; compact only very large ones so the header never overflows
+    el.balance.textContent = me.balance < 1e6 ? fmtC(me.balance) : fmtCompact(me.balance);
     el.refill.style.display = me.balance < 500 ? '' : 'none';
 }
 
 function renderPools() {
-    el.redPool.textContent = fmtC(ST.red);
-    el.bluePool.textContent = fmtC(ST.blue);
+    // pools grow large every round — compact them so the HUD stays tidy on mobile
+    el.redPool.textContent = fmtCompact(ST.red);
+    el.bluePool.textContent = fmtCompact(ST.blue);
     el.redBettors.textContent = ST.redBettors + ' fighters';
     el.blueBettors.textContent = ST.blueBettors + ' fighters';
 }
