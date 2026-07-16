@@ -32,6 +32,26 @@ button:disabled { cursor: not-allowed; opacity: 0.45; }
 
 .mobile-only { display: none; }                  /* shown only inside the mobile media query */
 
+/* rotate-to-portrait prompt — only on short landscape touch screens (phones) */
+.rotate-prompt {
+    display: none;
+    position: fixed; inset: 0; z-index: 2000;
+    background: var(--bg); color: var(--text);
+    flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+    text-align: center; padding: 24px;
+}
+.rotate-icon { font-size: 54px; animation: rotateHint 2s ease-in-out infinite; }
+@keyframes rotateHint { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(-90deg); } }
+.rotate-title {
+    font-size: 22px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px;
+    background: linear-gradient(45deg, var(--red), var(--gold), var(--blue));
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+}
+.rotate-sub { font-size: 13px; color: var(--muted); line-height: 1.6; }
+@media (orientation: landscape) and (max-height: 500px) and (pointer: coarse) {
+    .rotate-prompt { display: flex; }
+}
+
 /* ============ NAME MODAL ============ */
 .modal-overlay {
     position: fixed; inset: 0; z-index: 1000;
