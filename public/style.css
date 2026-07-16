@@ -388,6 +388,9 @@ input[type=number]::-webkit-inner-spin-button { display: none; }
 .btn-cashout small { font-size: 13px; font-weight: 700; opacity: 0.95; font-variant-numeric: tabular-nums; }
 .btn-cashout.locked { background: #2a2d3f; box-shadow: none; animation: none; color: #6a6f85; }
 .btn-cashout.done { background: #42455a; box-shadow: none; animation: none; }
+/* repurposed as a betting-window "cancel bet" — muted, no green pulse */
+.btn-cashout.cancel-mode { background: #2a2d3f; color: #c9cee0; box-shadow: none; animation: none; border: 1px solid var(--line); }
+.btn-cashout.cancel-mode:hover { background: #34384d; }
 @keyframes pulseGreen {
     0% { box-shadow: 0 0 0 0 rgba(0,200,83,0.6); }
     70% { box-shadow: 0 0 0 14px rgba(0,200,83,0); }

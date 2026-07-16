@@ -126,9 +126,9 @@ io.on('connection', (socket) => {
         if (typeof ack === 'function') ack(res);
     });
 
-    socket.on('cashout', (_data, ack) => {
+    socket.on('cancel', (_data, ack) => {
         if (!authed(ack)) return;
-        const res = engine.cashout(socket.data.token);
+        const res = engine.cancelBet(socket.data.token);
         if (typeof ack === 'function') ack(res);
     });
 

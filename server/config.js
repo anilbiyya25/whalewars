@@ -10,7 +10,7 @@ module.exports = {
     TICK_MS: 100,
 
     // Economy — virtual coins (🪙), integers only, no real money
-    HOUSE_EDGE: 0.035,        // 3.5% skim on every payout
+    HOUSE_EDGE: 0.04,         // 4% pari-mutuel house cut, skimmed off the pool each round
     WHALE_MIN: 5000,          // coin threshold that triggers a global whale alert
     START_BALANCE: 10000,     // free coins for new players
     MIN_BET: 10,
